@@ -236,7 +236,7 @@
         const FAR_PLANE_MULTIPLIER = 5;
 
         // --- Boot State Controls ---
-        const BOOT_STATE_DELAY = 2000; // Delay in milliseconds (2 seconds)
+        const BOOT_STATE_DELAY = 650; 
         const BOOT_ANIMATION_DURATION = 1.5;
         const BOOT_ANIMATION_EASING = "power2.inOut";
         const BOOT_CAMERA_POSITION_OFFSET = new THREE.Vector3(0, 0, 3);
@@ -299,7 +299,7 @@
         const PLANE_POSITION = new THREE.Vector3(0.488, 3.50, -1.205);
         const PLANE_ROTATION_DEGREES = { x: 0, y: 0, z: 0 };
         const PLANE_CORNER_RADIUS_PX = 50;
-        const PLANE_FALLBACK_COLOR = '#333333'; // *** NEW: Fallback color ***
+        const PLANE_FALLBACK_COLOR = '#333333';
 
         // --- Basic Scene Setup ---
         const canvas = document.getElementById('viewer-canvas');
@@ -545,7 +545,7 @@
             focusedCameraState.position.copy(newCameraPos);
             focusedCameraState.target.copy(targetPosition);
 
-            gsap.timeline({ 
+            const timeline = gsap.timeline({ 
                 onComplete: () => { 
                     controls.enabled = true; 
                     placeholderPlane.visible = false;
@@ -562,8 +562,9 @@
                     controls.maxZoom = FOCUSED_MAX_ZOOM;
                     controls.update();
                 } 
-            })
-            .to(camera.position, {
+            });
+            
+            timeline.to(camera.position, {
                 x: newCameraPos.x,
                 y: newCameraPos.y,
                 z: newCameraPos.z,
@@ -582,17 +583,20 @@
                 duration: FOCUS_ANIMATION_DURATION,
                 ease: FOCUS_EASING,
                 onUpdate: () => camera.updateProjectionMatrix()
-            }, 0)
-            .to(placeholderPlane.material, { 
+            }, 0);
+            
+            // *** UPDATED: Crossfade happens at the END of the camera animation ***
+            const crossfadeStartTime = FOCUS_ANIMATION_DURATION - CROSSFADE_DURATION;
+            timeline.to(placeholderPlane.material, { 
                 opacity: 0, 
                 duration: CROSSFADE_DURATION, 
                 ease: "none"
-            }, 0)
+            }, crossfadeStartTime)
             .to(cssObject.element.style, { 
                 opacity: 1, 
                 duration: CROSSFADE_DURATION, 
                 ease: "none"
-            }, 0);
+            }, crossfadeStartTime);
         }
 
         function exitFocusMode() {
@@ -609,7 +613,7 @@
             controls.minZoom = -Infinity;
             controls.maxZoom = Infinity;
 
-            gsap.timeline({ 
+            const timeline = gsap.timeline({ 
                 onComplete: () => { 
                     controls.minAzimuthAngle = initialControlLimits.minAzimuth;
                     controls.maxAzimuthAngle = initialControlLimits.maxAzimuth;
@@ -620,8 +624,21 @@
                     controls.enabled = true; 
                     cssObject.visible = false;
                 } 
-            })
-            .to(camera.position, {
+            });
+
+            // *** UPDATED: Crossfade happens at the START of the camera animation ***
+            timeline.to(cssObject.element.style, { 
+                opacity: 0, 
+                duration: CROSSFADE_DURATION, 
+                ease: "none"
+            }, 0)
+            .to(placeholderPlane.material, { 
+                opacity: 1, 
+                duration: CROSSFADE_DURATION, 
+                ease: "none"
+            }, 0);
+
+            timeline.to(camera.position, {
                 x: initialCameraState.position.x,
                 y: initialCameraState.position.y,
                 z: initialCameraState.position.z,
@@ -640,16 +657,6 @@
                 duration: FOCUS_ANIMATION_DURATION,
                 ease: FOCUS_EASING,
                 onUpdate: () => camera.updateProjectionMatrix()
-            }, 0)
-            .to(cssObject.element.style, { 
-                opacity: 0, 
-                duration: CROSSFADE_DURATION, 
-                ease: "none"
-            }, 0)
-            .to(placeholderPlane.material, { 
-                opacity: 1, 
-                duration: CROSSFADE_DURATION, 
-                ease: "none"
             }, 0);
         }
         
@@ -708,22 +715,18 @@
 
         }
 
-        // *** NEW: Function to create a solid color fallback texture ***
         function createFallbackPlaceholder() {
             const canvas = document.createElement('canvas');
-            const textureResolution = 512; // A good resolution for the fallback texture
+            const textureResolution = 512; 
             canvas.width = textureResolution;
-            // Match the aspect ratio of the actual plane
             canvas.height = textureResolution * (PLANE_RESOLUTION.height / PLANE_RESOLUTION.width);
 
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = PLANE_FALLBACK_COLOR;
 
-            // Calculate the radius for the fallback canvas based on the original ratio
             const radius = (PLANE_CORNER_RADIUS_PX / PLANE_RESOLUTION.width) * textureResolution;
 
             ctx.beginPath();
-            // The roundRect function is well-supported in modern browsers for canvas
             ctx.roundRect(0, 0, canvas.width, canvas.height, radius);
             ctx.fill();
 
@@ -734,7 +737,7 @@
                 placeholderPlane.material.map.dispose();
             }
             placeholderPlane.material.map = texture;
-            placeholderPlane.material.color.set(0xffffff); // Don't tint the texture
+            placeholderPlane.material.color.set(0xffffff);
             placeholderPlane.material.needsUpdate = true;
             placeholderPlane.visible = true;
         }
@@ -749,7 +752,7 @@
                     useCORS: true,
                     scrollX: iframe.contentWindow.scrollX * -1,
                     scrollY: iframe.contentWindow.scrollY * -1,
-                    logging: false // Suppress html2canvas logs
+                    logging: false
                 }).then(canvas => {
                     const texture = new THREE.CanvasTexture(canvas);
                     texture.colorSpace = THREE.SRGBColorSpace;
@@ -759,12 +762,10 @@
                     placeholderPlane.material.map = texture;
                     placeholderPlane.material.needsUpdate = true;
                 }).catch(e => {
-                    // *** UPDATED: Call the fallback function on error ***
                     console.error("Could not capture iframe with html2canvas. Creating fallback placeholder.", e);
                     createFallbackPlaceholder();
                 });
             } else {
-                // *** UPDATED: Call the fallback function if iframe content is inaccessible ***
                 console.warn("Cannot access iframe content to update placeholder. Creating fallback.");
                 createFallbackPlaceholder();
             }
@@ -1282,19 +1283,21 @@
                     isInBootState = true;
                     controls.enabled = false;
                     
+                    // *** UPDATED: Start fading out the reveal layer immediately ***
+                    gsap.to(revealLayer, { 
+                        opacity: 0, 
+                        duration: 1.5, // Fades out over 1.5s
+                        ease: "power2.inOut",
+                        onComplete: () => {
+                            revealLayer.style.display = 'none';
+                        }
+                    });
+
+                    // After the boot delay, start the camera animation
                     setTimeout(() => {
-                        gsap.to(revealLayer, { 
-                            opacity: 0, 
-                            duration: 1.5, 
-                            ease: "power2.inOut",
-                            onComplete: () => {
-                                revealLayer.style.display = 'none';
-                            }
-                        });
-                        // *** UPDATED: Capture the current iframe state before animating ***
                         updatePlaceholderFromInteractive();
                         animateFromBootToInitial();
-                    }, BOOT_STATE_DELAY);
+                    }, BOOT_STATE_DELAY); // BOOT_STATE_DELAY is 2s
                     
                     URL.revokeObjectURL(url);
                     loadingIndicator.classList.add('hidden');
