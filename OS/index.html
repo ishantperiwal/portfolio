@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows XP Boot Loader</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom CSS for the boot screen */
+        body {
+            background-color: #000000; /* Black background, as per the image */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif; /* Using Inter as per instructions */
+            color: white; /* Default text color to white */
+        }
+
+        .boot-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 90%; /* Responsive width */
+            max-width: 600px; /* Max width for larger screens */
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+
+        .microsoft-logo {
+            font-size: clamp(0.8rem, 3vw, 1.2rem); /* Smaller font size for Microsoft */
+            font-weight: 400;
+            margin-bottom: 0.5rem; /* Space between Microsoft and Windows XP */
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .windows-xp-logo {
+            font-size: clamp(2rem, 8vw, 4rem); /* Responsive font size for Windows XP */
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            margin-bottom: 3rem; /* Space between logo and loading bar */
+            text-align: center;
+        }
+
+        /* Loading Bar Styles */
+        .loading-bar-outer {
+            width: clamp(200px, 50vw, 300px); /* Responsive width for the bar */
+            height: 18px; /* Fixed height for the bar */
+            border: 1px solid #A0A0A0; /* Grey border */
+            background-color: #000000; /* Black background inside the bar */
+            border-radius: 3px; /* Slightly rounded corners for the bar */
+            overflow: hidden; /* Hide overflow of the moving inner bar */
+            position: relative;
+        }
+
+        .loading-bar-inner {
+            height: 100%;
+            width: 200%; /* Wider than the outer bar to allow for movement */
+            background: repeating-linear-gradient(
+                90deg,
+                #000080 0%, /* Dark blue for gaps */
+                #000080 15%,
+                #3366CC 15%, /* Blue for blocks */
+                #3366CC 30%
+            );
+            background-size: 50% 100%; /* Control the size of the repeating pattern */
+            position: absolute;
+            top: 0;
+            left: -100%; /* Start off-screen to the left */
+            animation: moveLoadingBar 2s linear infinite; /* Animation for movement */
+        }
+
+        @keyframes moveLoadingBar {
+            0% {
+                transform: translateX(0); /* Start from the initial position (left: -100%) */
+            }
+            100% {
+                transform: translateX(50%); /* Move to the right */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="boot-container">
+        <div class="microsoft-logo">
+            Microsoft®
+        </div>
+        <div class="windows-xp-logo">
+            Windows XP
+        </div>
+        <div class="loading-bar-outer">
+            <div class="loading-bar-inner"></div>
+        </div>
+    </div>
+
+    <script>
+        // JavaScript for any future dynamic behavior, currently not needed for this static loop
+        window.onload = function() {
+            console.log('Windows XP boot screen loaded.');
+        };
+    </script>
+</body>
+</html>
