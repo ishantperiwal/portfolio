@@ -12,6 +12,7 @@
             background-color: transparent;
             /* Use flexbox to center content */
             display: flex;
+            flex-direction: column; /* Changed to column to stack image and text */
             justify-content: center;
             align-items: center;
             /* Ensure it takes full viewport height */
@@ -19,7 +20,6 @@
             margin: 0;
             overflow: hidden;
             font-family: 'Inter', sans-serif;
-            /* Removed text-specific styles as we are now displaying an image */
         }
 
         img {
@@ -27,13 +27,24 @@
             height: auto; /* Maintain aspect ratio */
             border-radius: 0.5rem; /* Add some rounded corners for aesthetics */
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Optional: Add a subtle shadow */
+            margin-bottom: 1rem; /* Space between image and text */
+        }
+
+        .image-text {
+            font-size: clamp(2rem, 8vw, 5rem); /* Big letters, responsive font size */
+            font-weight: 700;
+            color: black; /* Or any color that contrasts well with your background */
+            text-align: center;
         }
     </style>
 </head>
 <body>
     <div>
         <!-- Placeholder for a random image. The 'random' in the URL helps simulate variety. -->
-        <img src="car.png" alt="Random Placeholder Image">
+        <img src="https://placehold.co/600x400/random/random?text=Random+Image" alt="Random Placeholder Image">
+        <div class="image-text">
+            Image Here
+        </div>
     </div>
 </body>
 </html>
