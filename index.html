@@ -585,7 +585,6 @@
                 onUpdate: () => camera.updateProjectionMatrix()
             }, 0);
             
-            // *** UPDATED: Crossfade happens at the END of the camera animation ***
             const crossfadeStartTime = FOCUS_ANIMATION_DURATION - CROSSFADE_DURATION;
             timeline.to(placeholderPlane.material, { 
                 opacity: 0, 
@@ -626,7 +625,6 @@
                 } 
             });
 
-            // *** UPDATED: Crossfade happens at the START of the camera animation ***
             timeline.to(cssObject.element.style, { 
                 opacity: 0, 
                 duration: CROSSFADE_DURATION, 
@@ -754,7 +752,8 @@
                     backgroundColor: null,
                     scrollX: 0,
                     scrollY: 0,
-                    logging: false
+                    logging: false,
+                    allowTaint: true // *** NEW: Allow rendering of cross-origin images ***
                 }).then(canvas => {
                     const texture = new THREE.CanvasTexture(canvas);
                     texture.colorSpace = THREE.SRGBColorSpace;
