@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello Transparent</title>
+    <title>Random Image Transparent</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -19,15 +19,21 @@
             margin: 0;
             overflow: hidden;
             font-family: 'Inter', sans-serif;
-            color: black; /* Default text color, adjust if needed for contrast */
-            font-size: 3rem; /* Make the text clearly visible */
-            font-weight: 700;
+            /* Removed text-specific styles as we are now displaying an image */
+        }
+
+        img {
+            max-width: 90%; /* Ensure image is responsive and fits within the viewport */
+            height: auto; /* Maintain aspect ratio */
+            border-radius: 0.5rem; /* Add some rounded corners for aesthetics */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Optional: Add a subtle shadow */
         }
     </style>
 </head>
 <body>
     <div>
-        Hello
+        <!-- Placeholder for a random image. The 'random' in the URL helps simulate variety. -->
+        <img src="car.png" alt="Random Placeholder Image">
     </div>
 </body>
 </html>
