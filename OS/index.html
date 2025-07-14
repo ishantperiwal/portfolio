@@ -25,10 +25,12 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            /* Removed absolute positioning and z-index as it's now the primary content */
             width: 90%; /* Responsive width */
             max-width: 600px; /* Max width for larger screens */
             padding: 2rem;
             box-sizing: border-box;
+            /* Removed transition as it's no longer fading out */
         }
 
         .microsoft-logo {
@@ -48,8 +50,8 @@
 
         /* Loading Bar Styles */
         .loading-bar-outer {
-            width: clamp(200px, 50vw, 300px); /* Responsive width for the bar */
-            height: 18px; /* Fixed height for the bar */
+            width: clamp(300px, 70vw, 500px); /* Made loader bigger */
+            height: 30px; /* Made loader taller */
             border: 1px solid #A0A0A0; /* Grey border */
             background-color: #000000; /* Black background inside the bar */
             border-radius: 3px; /* Slightly rounded corners for the bar */
@@ -82,10 +84,15 @@
                 transform: translateX(50%); /* Move to the right */
             }
         }
+
+        /* Iframe container styles - now hidden by default */
+        .iframe-container {
+            display: none; /* Hide the iframe container completely */
+        }
     </style>
 </head>
 <body>
-    <div class="boot-container">
+    <div id="bootScreenContent" class="boot-container">
         <div class="microsoft-logo">
             Microsoft®
         </div>
@@ -97,10 +104,15 @@
         </div>
     </div>
 
+    <!-- The iframe container is now hidden as the boot screen will loop infinitely -->
+    <div id="iframeContainer" class="iframe-container">
+        <iframe src="OS/index.html" title="Operating System Content"></iframe>
+    </div>
+
     <script>
-        // JavaScript for any future dynamic behavior, currently not needed for this static loop
+        // No JavaScript needed to control visibility anymore, as it's an infinite loop
         window.onload = function() {
-            console.log('Windows XP boot screen loaded.');
+            console.log('Windows XP boot screen loaded and looping infinitely.');
         };
     </script>
 </body>
