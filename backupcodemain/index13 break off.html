@@ -1,0 +1,1785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLB Model Viewer - Orthographic</title>
+    <!-- Google Fonts: Aldrich -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Aldrich&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- GSAP for animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <!-- html2canvas for rasterizing web content -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* Custom styles for the 3D canvas and file input */
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Prevent scrollbars from appearing */
+            transition: background-color 0.3s; /* Smooth color transition */
+            background-color: #242424; /* New default background color */
+        }
+        #viewer-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
+        /* The CSS3DRenderer will have its own container */
+        #css3d-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allow clicks to pass through to the canvas */
+            z-index: 40; /* Layer between reveal layer and UI */
+        }
+        #css3d-container iframe {
+            pointer-events: auto; /* But allow clicks on the iframe itself */
+            border: 2px solid black;
+        }
+        /* Hide the default file input */
+        #model-input {
+            display: none;
+        }
+        /* Style the color picker */
+        #bg-color-picker {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border: none;
+            border-radius: 0.5rem; /* rounded-lg */
+            cursor: pointer;
+            background-color: transparent;
+        }
+        #bg-color-picker::-webkit-color-swatch {
+            border-radius: 0.5rem;
+            border: 2px solid #e5e7eb; /* gray-200 */
+        }
+        #bg-color-picker::-moz-color-swatch {
+            border-radius: 0.5rem;
+            border: 2px solid #e5e7eb; /* gray-200 */
+        }
+        /* --- Animated Noise Layer --- */
+        @keyframes animateNoise {
+          0% { transform: translate(0, 0); }
+          10% { transform: translate(-5%, -5%); }
+          20% { transform: translate(-10%, 5%); }
+          30% { transform: translate(5%, -10%); }
+          40% { transform: translate(-5%, 15%); }
+          50% { transform: translate(-10%, 5%); }
+          60% { transform: translate(15%, 0); }
+          70% { transform: translate(0, 10%); }
+          80% { transform: translate(-15%, 0); }
+          90% { transform: translate(10%, 5%); }
+          100% { transform: translate(5%, 0); }
+        }
+        .noise-layer {
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            pointer-events: none; /* Make it click-through */
+            z-index: 50; /* Above 3D scene and CSS3D, below UI */
+            opacity: 0.07; /* Default opacity */
+            background: url("data:image/svg+xml,%3Csvg viewBox='0 0 1024 1024' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            animation: animateNoise 1s steps(4) infinite; /* Default speed */
+        }
+        #ishant-text {
+            font-family: 'Aldrich', sans-serif;
+            font-size: 12rem; /* Make the text larger */
+            margin-top: 9rem; /* Push the text down */
+        }
+        #placeholder-iframe-container {
+            position: absolute;
+            top: -9999px; /* Hide the iframe off-screen */
+            left: -9999px;
+        }
+        /* Message Box Styling */
+        #message-box {
+            transition: opacity 0.5s, transform 0.5s;
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- Background Text Layer -->
+    <div id="background-text-layer" class="absolute inset-0 z-10 flex justify-center items-start pt-24 pointer-events-none">
+        <h1 id="ishant-text" class="text-9xl font-black text-white opacity-10 select-none"></h1>
+    </div>
+
+    <!-- Noise layer element -->
+    <div class="noise-layer"></div>
+
+    <!-- The container for the 3D viewer -->
+    <div id="viewer-container" class="w-screen h-screen absolute top-0 left-0 z-20">
+        <canvas id="viewer-canvas"></canvas>
+    </div>
+
+    <!-- New container for the CSS3D renderer -->
+    <div id="css3d-container"></div>
+
+    <!-- Hidden container for the iframe that will be rasterized -->
+    <div id="placeholder-iframe-container"></div>
+
+    <!-- UI elements overlaid on the viewer -->
+    <div class="absolute top-0 left-0 p-6 w-full flex flex-col sm:flex-row justify-between items-start z-[60]">
+        <div id="top-left-ui" class="pointer-events-auto">
+            <h1 id="title-text" class="text-2xl font-bold text-white drop-shadow-sm">3D Model Viewer</h1>
+            <p id="instructions" class="text-gray-300 drop-shadow-sm max-w-sm">
+                Click the button to load a <code id="code-text-1" class="bg-gray-700 text-pink-400 px-1 rounded-md">.glb</code> or <code id="code-text-2" class="bg-gray-700 text-pink-400 px-1 rounded-md">.gltf</code> file from your computer.
+            </p>
+        </div>
+
+        <div class="flex items-start space-x-2 pointer-events-auto">
+            <!-- UI Toggle Button -->
+            <button id="toggle-ui-btn" class="p-2 rounded-lg bg-white/20 backdrop-blur-sm shadow hover:bg-white/30 transition-colors">
+                <svg id="eye-icon-open" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                <svg id="eye-icon-closed" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye-off hidden"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+            </button>
+
+            <!-- Container for all other UI controls -->
+            <div id="ui-controls-container" class="flex items-center space-x-4">
+                 <!-- Glass Effect Controls -->
+                <div class="flex flex-col items-center space-y-1 bg-white/20 backdrop-blur-sm p-3 rounded-lg shadow">
+                    <label for="object-name-input" id="object-name-label" class="text-sm font-medium text-gray-300">Object Name for Glass</label>
+                    <input type="text" id="object-name-input" placeholder="e.g., 'Screen'" class="w-32 px-2 py-1 border border-gray-500 rounded-md text-sm bg-white/10 text-white">
+                    <button id="apply-glass-btn" class="mt-2 w-full bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition-colors">Apply Effect</button>
+                </div>
+                 <!-- Noise Controls -->
+                <div class="flex flex-col items-center space-y-1">
+                    <label for="noise-opacity-slider" id="noise-opacity-label" class="text-sm font-medium text-gray-300">Noise Opacity</label>
+                    <input type="range" id="noise-opacity-slider" min="0" max="0.5" step="0.01" value="0.07" class="w-24 h-2 bg-gray-500 rounded-lg appearance-none cursor-pointer">
+                </div>
+                <div class="flex flex-col items-center space-y-1">
+                    <label for="noise-speed-slider" id="noise-speed-label" class="text-sm font-medium text-gray-300">Animation Speed</label>
+                    <input type="range" id="noise-speed-slider" min="0.1" max="2" step="0.1" value="1" class="w-24 h-2 bg-gray-500 rounded-lg appearance-none cursor-pointer">
+                </div>
+                 <!-- Color Picker -->
+                <input type="color" id="bg-color-picker" value="#363636" title="Change background color">
+                <!-- Styled file input button -->
+                <label for="model-input" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg cursor-pointer transition-colors duration-300">
+                    Load Model
+                </label>
+                <input type="file" id="model-input" accept=".glb, .gltf">
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Reveal Layer -->
+    <div id="reveal-layer" class="absolute inset-0 bg-black z-30 pointer-events-none"></div>
+
+    <!-- Message Box -->
+    <div id="message-box" class="hidden absolute top-5 left-1/2 -translate-x-1/2 p-4 rounded-lg text-white font-semibold shadow-2xl z-[70] pointer-events-none opacity-0 -translate-y-20">
+        <p id="message-text"></p>
+    </div>
+
+
+    <!-- ES Module Shims for browser compatibility -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+    <!-- Import map for three.js modules from CDN -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        // Import necessary modules from three.js
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+        // Import the CSS3DRenderer
+        import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
+
+        // --- Camera and Orbit Controls ---
+        const INITIAL_CAMERA_POSITION = new THREE.Vector3(2.2, 2.6, 5);
+        const INITIAL_CAMERA_PAN_X = -0.8;
+        const INITIAL_CAMERA_PAN_Y = -1;
+        const INITIAL_CAMERA_ZOOM = 2.1;
+        const INITIAL_MIN_ZOOM = 2.0;
+        const INITIAL_MAX_ZOOM = 4.5;
+        const ORBIT_LIMIT_LEFT = 16;
+        const ORBIT_LIMIT_RIGHT = 48;
+        const ORBIT_LIMIT_UP = 38;
+        const ORBIT_LIMIT_DOWN = -10;
+        const SNAP_BACK_DURATION = 0.5;
+        const SNAP_BACK_EASING = "power2.out";
+
+        // --- Frustum Controls ---
+        const FRUSTUM_HEIGHT = 22;
+        const NEAR_PLANE_MULTIPLIER = -5;
+        const FAR_PLANE_MULTIPLIER = 5;
+
+        // --- Boot State Controls ---
+        const BOOT_STATE_DELAY = 250;
+        const BOOT_ANIMATION_DURATION = 1.2;
+        const BOOT_ANIMATION_EASING = "power2.inOut";
+        const BOOT_CAMERA_POSITION_OFFSET = new THREE.Vector3(0, 0, 3);
+        const BOOT_CAMERA_ZOOM = 3.35;
+        const BOOT_CROSSFADE_DURATION = 0.5;
+
+        // --- Focused Camera State ---
+        const FOCUSED_CAMERA_POSITION_OFFSET = new THREE.Vector3(0, 0, 3);
+        const FOCUSED_CAMERA_ZOOM = 3.34;
+        const FOCUSED_MIN_ZOOM = 3.34;
+        const FOCUSED_MAX_ZOOM = 5;
+        const FOCUS_ANIMATION_DURATION = 1.2;
+        const FOCUS_EASING = "power2.inOut";
+        const CROSSFADE_DURATION = 0.5;
+        const FOCUSED_ORBIT_LIMIT_LEFT = 5;
+        const FOCUSED_ORBIT_LIMIT_RIGHT = 5;
+        const FOCUSED_ORBIT_LIMIT_UP = 0;
+        const FOCUSED_ORBIT_LIMIT_DOWN = 0;
+
+        // --- Wobble Head Controls ---
+        const WOBBLE_STRENGTH = 0.3; // Radians, how far it wobbles initially
+        const WOBBLE_DURATION = 1.0;  // Total duration of the wobble animation in seconds
+
+        // --- Camera Hover Controls ---
+        const HOVER_AMPLITUDE = 0.26; // How far the camera will float from center
+        const HOVER_SPEED = 0.35;      // How fast the camera will float
+        const HOVER_FADE_DURATION = 1.0; // Duration for hover fade in/out
+
+        // --- Smoke Effect Controls ---
+        const SMOKE_GROUP_POSITION_OFFSET = new THREE.Vector3(-0.15, 1.8, 0.13);
+        const SMOKE_GROUP_ROTATION_DEGREES = { x: 0, y: 0, z: 0 }; // y-value is now an offset
+        const SMOKE_GROUP_SCALE = 4.3;
+        const SMOKE_GROUP_OPACITY = 0.3;
+        const SMOKE_TIME_FREQUENCY = 0.5;
+        const SMOKE_UV_FREQUENCY_X = 2.8;
+        const SMOKE_UV_FREQUENCY_Y = 4;
+        const SMOKE_LENGTH = 0.6;
+        const SMOKE_COLOR = '#ffffff';
+
+        // --- Coffee Plane Controls ---
+        const COFFEE_PLANE_COLOR = '#D4BBA7';
+        const COFFEE_PLANE_SCALE = 0.56;
+        const COFFEE_PLANE_POSITION_OFFSET = new THREE.Vector3(-0.15, -4.29, 0.13);
+
+        // --- Coffee Light Controls ---
+        const COFFEE_LIGHT_COLOR = '#ff8c00';
+        const COFFEE_LIGHT_INTENSITY = 1.8;
+        const COFFEE_LIGHT_DISTANCE = 2.5;
+        const COFFEE_LIGHT_POSITION_OFFSET = new THREE.Vector3(0, 0.5, 0);
+
+        // --- Lighting Controls ---
+        const HEMISPHERE_LIGHT_SKY_COLOR = 0xffffff;
+        const HEMISPHERE_LIGHT_GROUND_COLOR = 0x444444;
+        const HEMISPHERE_LIGHT_INTENSITY = 0.9;
+        const AMBIENT_LIGHT_COLOR = 0xffffff;
+        const AMBIENT_LIGHT_INTENSITY = 0;
+        const HDRI_URL = 'https://cdn.jsdelivr.net/gh/ishantperiwal/portfolio@a2ec17e574ccb936a6866c7262c3ad7cbf32cc33/hdri/rogland_clear_night_1k.hdr';
+        const HDRI_INTENSITY = 1.5;
+
+
+        // --- Plane Controls ---
+        const INTERACTIVE_URL = 'OS/index.html';
+        const PLANE_RESOLUTION = { width: 2054, height: 1580 };
+        const PLANE_SCALE = 0.00165;
+        const PLANE_POSITION = new THREE.Vector3(0.488, 3.50, -1.205);
+        const PLANE_ROTATION_DEGREES = { x: 0, y: 0, z: 0 };
+        const PLANE_CORNER_RADIUS_PX = 50;
+        const PLANE_FALLBACK_COLOR = '#333333';
+
+        // --- Texture Overlay Controls ---
+        const OVERLAY_TEXTURE_URL = 'OS/frontpane.png'; // Example URL, replace with your own
+        const OVERLAY_PLANE_DISTANCE = 0.07; // Distance in front of the placeholder plane
+        const OVERLAY_PLANE_SCALE = 1.04;
+
+        // --- Bee Controls ---
+        const BEE_URL = 'https://cdn.jsdelivr.net/gh/ishantperiwal/portfolio@53696e2/models/bee.glb';
+        const BEE_POSITION = new THREE.Vector3(1.2, 2.6, 0.6);
+        const BEE_ROTATION = { x: 0, y: -28, z: 10 };
+        const BEE_SCALE = new THREE.Vector3(0.2, 0.2, 0.2);
+        const BEE_ANIMATION_SPEED = 11.5;
+        const BEE_TILT_STRENGTH = 2.5;
+        const BEE_MOVEMENT_RADIUS = { x: 0.4, y: 0.3, z: 0.1 };
+        const BEE_IDLE_DURATION = { min: 2.0, max: 2.9 };
+        const BEE_MOVE_DURATION = { min: 1.3, max: 2.5 };
+        const BEE_MAX_YAW_RADIANS_PER_SEC = THREE.MathUtils.degToRad(25); // Max turn speed
+
+        // --- 86 Body Controls ---
+        const BODY86_POSITION_OFFSET = new THREE.Vector3(0, 0.01, 0);
+        const BODY86_PRESS_DEPTH = 0.02;
+        const BODY86_BOUNCE_ELASTICITY = 1.4;
+        const BODY86_LIGHT_MAX_INTENSITY = 25.0;
+        const BODY86_LIGHT_BLINK_DURATION = 0.9;
+        const BODY86_LIGHT_BLINK_COUNT = 2;
+        const BODY86_LIGHT_EMISSIVE_COLOR = '#ffffff';
+        const BODY86_LIGHT_BASE_COLOR = '#cccccc';
+
+        // --- NEW: Ground Light Controls ---
+        const BODY86_GROUND_LIGHT_COLOR = '#ffae00';
+        const BODY86_GROUND_LIGHT_MAX_OPACITY = 1;
+        const BODY86_GROUND_LIGHT_SCALE = new THREE.Vector3(0.8, 2.6, 1);
+        const BODY86_GROUND_LIGHT_ROTATION = THREE.MathUtils.degToRad(-30);
+        const BODY86_GROUND_LIGHT_OFFSET_LEFT = new THREE.Vector3(-0.60, 0.01, 1.13);
+        const BODY86_GROUND_LIGHT_OFFSET_RIGHT = new THREE.Vector3(-0.94, 0.01, 0.9);
+
+
+        // --- Basic Scene Setup ---
+        const canvas = document.getElementById('viewer-canvas');
+        const css3dContainer = document.getElementById('css3d-container');
+        const fileInput = document.getElementById('model-input');
+        const bgColorPicker = document.getElementById('bg-color-picker');
+        const instructions = document.getElementById('instructions');
+        const noiseLayer = document.querySelector('.noise-layer');
+        const noiseOpacitySlider = document.getElementById('noise-opacity-slider');
+        const noiseSpeedSlider = document.getElementById('noise-speed-slider');
+        const objectNameInput = document.getElementById('object-name-input');
+        const applyGlassBtn = document.getElementById('apply-glass-btn');
+        const toggleUiBtn = document.getElementById('toggle-ui-btn');
+        const uiControlsContainer = document.getElementById('ui-controls-container');
+        const eyeIconOpen = document.getElementById('eye-icon-open');
+        const eyeIconClosed = document.getElementById('eye-icon-closed');
+        const topLeftUi = document.getElementById('top-left-ui');
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+        const revealLayer = document.getElementById('reveal-layer');
+
+        let scene, camera, renderer, cssRenderer, controls, loadedModel, internalLight;
+        let cameraGroup; // Parent group for the camera
+        let hoverIntensity = { value: 0 }; // Use object for GSAP tweening
+        let beeModel, beeMixer;
+        let beeInitialPosition = new THREE.Vector3();
+        let previousBeePosition = new THREE.Vector3();
+        let beeState = 'IDLE';
+        let beeStateTimer = 0;
+        let beeTargetPosition = new THREE.Vector3();
+        let beeIdleStartTime = 0;
+
+        let placeholderPlane, cssObject, textureOverlayPlane;
+        let lottieHead, lottieHeadPivot;
+        let smokeGroup, smokeMaterials = [];
+        let keyboardKeys = [];
+        let spacebarKey = null;
+        let initialCameraState = {
+            position: new THREE.Vector3(),
+            target: new THREE.Vector3()
+        };
+        let focusedCameraState = {
+            position: new THREE.Vector3(),
+            target: new THREE.Vector3()
+        };
+        let initialControlLimits = {};
+        let isFocused = false;
+        let isInBootState = false;
+        let isMouseDown = false;
+        let dragHappened = false;
+
+        // --- Variables for the 86 model ---
+        let body86 = null;
+        let lights86Material = null;
+        let body86InitialY = 0;
+        let groundLightLeft, groundLightRight; // NEW: Variables for ground lights
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const clock = new THREE.Clock();
+        const planeNormal = new THREE.Vector3(0, 0, 1);
+        const cameraDirection = new THREE.Vector3();
+        let maxAnisotropy;
+
+        function createDefaultPlaceholderTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1;
+            canvas.height = 1;
+            const context = canvas.getContext('2d');
+            context.fillStyle = PLANE_FALLBACK_COLOR;
+            context.fillRect(0, 0, 1, 1);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            return texture;
+        }
+
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+
+            // Create a group to act as the camera's parent for hover animations
+            cameraGroup = new THREE.Group();
+            scene.add(cameraGroup);
+
+            // --- Orthographic Camera ---
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
+            updateCameraFrustum();
+
+            // Add the camera to the group instead of the scene
+            cameraGroup.add(camera);
+
+            camera.position.copy(INITIAL_CAMERA_POSITION);
+            camera.zoom = INITIAL_CAMERA_ZOOM;
+            camera.updateProjectionMatrix();
+
+            // WebGL Renderer
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+            renderer.setClearColor(0x000000, 0);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+            maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+
+            // CSS3D Renderer
+            cssRenderer = new CSS3DRenderer();
+            cssRenderer.setSize(window.innerWidth, window.innerHeight);
+            css3dContainer.appendChild(cssRenderer.domElement);
+
+            // Controls - still target the camera object directly
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.enablePan = false;
+
+            initialCameraState.position.copy(camera.position);
+            initialCameraState.target.copy(controls.target);
+            initialControlLimits = {
+                minAzimuth: controls.minAzimuthAngle,
+                maxAzimuth: controls.maxAzimuthAngle,
+                minPolar: controls.minPolarAngle,
+                maxPolar: controls.maxPolarAngle,
+                minZoom: INITIAL_MIN_ZOOM,
+                maxZoom: INITIAL_MAX_ZOOM
+            };
+            controls.minZoom = initialControlLimits.minZoom;
+            controls.maxZoom = initialControlLimits.maxZoom;
+
+            // Lighting
+            const hemisphereLight = new THREE.HemisphereLight(HEMISPHERE_LIGHT_SKY_COLOR, HEMISPHERE_LIGHT_GROUND_COLOR, HEMISPHERE_LIGHT_INTENSITY);
+            scene.add(hemisphereLight);
+
+            const ambientLight = new THREE.AmbientLight(AMBIENT_LIGHT_COLOR, AMBIENT_LIGHT_INTENSITY);
+            scene.add(ambientLight);
+
+            new RGBELoader().load(HDRI_URL, function(texture) {
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                scene.environment = texture;
+                scene.environmentIntensity = HDRI_INTENSITY;
+            });
+
+
+            // --- Create Interactive CSS3DObject ---
+            const iframeInteractive = document.createElement('iframe');
+            iframeInteractive.src = INTERACTIVE_URL;
+            iframeInteractive.style.width = `${PLANE_RESOLUTION.width}px`;
+            iframeInteractive.style.height = `${PLANE_RESOLUTION.height}px`;
+            iframeInteractive.style.border = 'none';
+            iframeInteractive.style.borderRadius = `${PLANE_CORNER_RADIUS_PX}px`;
+            iframeInteractive.style.overflow = 'hidden';
+            iframeInteractive.style.opacity = '1';
+
+            cssObject = new CSS3DObject(iframeInteractive);
+            cssObject.scale.set(PLANE_SCALE, PLANE_SCALE, PLANE_SCALE);
+            cssObject.position.copy(PLANE_POSITION);
+            cssObject.rotation.set(
+                THREE.MathUtils.degToRad(PLANE_ROTATION_DEGREES.x),
+                THREE.MathUtils.degToRad(PLANE_ROTATION_DEGREES.y),
+                THREE.MathUtils.degToRad(PLANE_ROTATION_DEGREES.z)
+            );
+            cssObject.visible = true;
+            scene.add(cssObject);
+
+            // Set initial camera to focus on the CSS3D Object
+            const initialTargetPosition = new THREE.Vector3();
+            cssObject.getWorldPosition(initialTargetPosition);
+            const initialCameraPos = initialTargetPosition.clone().add(BOOT_CAMERA_POSITION_OFFSET);
+
+            camera.position.copy(initialCameraPos);
+            controls.target.copy(initialTargetPosition);
+            camera.zoom = BOOT_CAMERA_ZOOM;
+            camera.updateProjectionMatrix();
+
+
+            // --- Create Placeholder Plane ---
+            const planeGeom = new THREE.PlaneGeometry(PLANE_RESOLUTION.width * PLANE_SCALE, PLANE_RESOLUTION.height * PLANE_SCALE);
+            const placeholderMaterial = new THREE.MeshBasicMaterial({
+                map: createDefaultPlaceholderTexture(),
+                side: THREE.DoubleSide,
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0
+            });
+            placeholderPlane = new THREE.Mesh(planeGeom, placeholderMaterial);
+            placeholderPlane.position.copy(PLANE_POSITION);
+            placeholderPlane.rotation.copy(cssObject.rotation);
+            placeholderPlane.visible = false;
+            scene.add(placeholderPlane);
+
+            // --- Create Texture Overlay Plane ---
+            const overlayMaterial = new THREE.MeshBasicMaterial({
+                transparent: true,
+                opacity: 0, // Start fully transparent
+                side: THREE.DoubleSide
+            });
+            textureOverlayPlane = new THREE.Mesh(planeGeom, overlayMaterial);
+            textureOverlayPlane.position.copy(placeholderPlane.position);
+            textureOverlayPlane.rotation.copy(placeholderPlane.rotation);
+            textureOverlayPlane.translateZ(OVERLAY_PLANE_DISTANCE);
+            textureOverlayPlane.scale.set(OVERLAY_PLANE_SCALE, OVERLAY_PLANE_SCALE, OVERLAY_PLANE_SCALE);
+            scene.add(textureOverlayPlane);
+
+            // Load the overlay texture
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(OVERLAY_TEXTURE_URL, (texture) => {
+                texture.colorSpace = THREE.SRGBColorSpace;
+                textureOverlayPlane.material.map = texture;
+                textureOverlayPlane.material.needsUpdate = true;
+            }, undefined, (error) => {
+                console.error("Could not load the overlay texture:", error);
+                showMessage('Could not load overlay texture.', 'error');
+            });
+
+
+            // --- Event Listeners for Click vs. Drag ---
+            renderer.domElement.addEventListener('mousedown', () => {
+                isMouseDown = true;
+                dragHappened = false;
+            }, false);
+
+            renderer.domElement.addEventListener('mousemove', () => {
+                if (isMouseDown) {
+                    dragHappened = true;
+                }
+            }, false);
+
+            renderer.domElement.addEventListener('mouseup', (event) => {
+                if (isMouseDown) {
+                    if (dragHappened) {
+                        if (isFocused) {
+                            gsap.to(camera.position, {
+                                x: focusedCameraState.position.x,
+                                y: focusedCameraState.position.y,
+                                z: focusedCameraState.position.z,
+                                duration: SNAP_BACK_DURATION,
+                                ease: SNAP_BACK_EASING
+                            });
+                            gsap.to(controls.target, {
+                                x: focusedCameraState.target.x,
+                                y: focusedCameraState.target.y,
+                                z: focusedCameraState.target.z,
+                                duration: SNAP_BACK_DURATION,
+                                ease: SNAP_BACK_EASING
+                            });
+                        } else {
+                            gsap.to(camera.position, {
+                                x: initialCameraState.position.x,
+                                y: initialCameraState.position.y,
+                                z: initialCameraState.position.z,
+                                duration: SNAP_BACK_DURATION,
+                                ease: SNAP_BACK_EASING
+                            });
+                            gsap.to(controls.target, {
+                                x: initialCameraState.target.x,
+                                y: initialCameraState.target.y,
+                                z: initialCameraState.target.z,
+                                duration: SNAP_BACK_DURATION,
+                                ease: SNAP_BACK_EASING
+                            });
+                        }
+                    } else {
+                        handleSceneClick(event);
+                    }
+                }
+                isMouseDown = false;
+                dragHappened = false;
+            }, false);
+
+            // --- NEW: Add mouse move listener for hover effects ---
+            window.addEventListener('mousemove', onMouseMove, false);
+
+
+            animate();
+        }
+
+        // --- NEW: Function to handle mouse movement for hover checks ---
+        function onMouseMove(event) {
+            // Calculate mouse position in normalized device coordinates (-1 to +1) for raycasting
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function updateCameraFrustum() {
+            const aspect = window.innerWidth / window.innerHeight;
+            camera.left = -FRUSTUM_HEIGHT * aspect / 2;
+            camera.right = FRUSTUM_HEIGHT * aspect / 2;
+            camera.top = FRUSTUM_HEIGHT / 2;
+            camera.bottom = -FRUSTUM_HEIGHT / 2;
+            camera.updateProjectionMatrix();
+        }
+
+        function enterFocusMode() {
+            if (isFocused || isInBootState) return;
+            isFocused = true;
+
+            // Fade out the hover effect as we leave the initial state
+
+            gsap.to(hoverIntensity, { value: 0, duration: HOVER_FADE_DURATION, ease: "power2.inOut" });
+
+            controls.enabled = false;
+            cssObject.visible = true;
+
+            controls.minAzimuthAngle = -Infinity;
+            controls.maxAzimuthAngle = Infinity;
+            controls.minPolarAngle = -Infinity;
+            controls.maxPolarAngle = Infinity;
+            controls.minZoom = -Infinity;
+            controls.maxZoom = Infinity;
+
+
+            const targetPosition = new THREE.Vector3();
+            cssObject.getWorldPosition(targetPosition);
+
+            const newCameraPos = targetPosition.clone().add(FOCUSED_CAMERA_POSITION_OFFSET);
+
+            focusedCameraState.position.copy(newCameraPos);
+            focusedCameraState.target.copy(targetPosition);
+
+            const timeline = gsap.timeline({
+                onComplete: () => {
+                    controls.enabled = true;
+                    placeholderPlane.visible = false;
+
+                    const degToRad = Math.PI / 180;
+                    const currentAzimuth = controls.getAzimuthalAngle();
+                    const currentPolar = controls.getPolarAngle();
+
+                    controls.minAzimuthAngle = currentAzimuth - (FOCUSED_ORBIT_LIMIT_LEFT * degToRad);
+                    controls.maxAzimuthAngle = currentAzimuth + (FOCUSED_ORBIT_LIMIT_RIGHT * degToRad);
+                    controls.minPolarAngle = currentPolar - (FOCUSED_ORBIT_LIMIT_UP * degToRad);
+                    controls.maxPolarAngle = currentPolar + (FOCUSED_ORBIT_LIMIT_DOWN * degToRad);
+                    controls.minZoom = FOCUSED_MIN_ZOOM;
+                    controls.maxZoom = FOCUSED_MAX_ZOOM;
+                    controls.update();
+                }
+            });
+
+            timeline.to(camera.position, {
+                x: newCameraPos.x,
+                y: newCameraPos.y,
+                z: newCameraPos.z,
+                duration: FOCUS_ANIMATION_DURATION,
+                ease: FOCUS_EASING
+            }, 0)
+            .to(controls.target, {
+                x: targetPosition.x,
+                y: targetPosition.y,
+                z: targetPosition.z,
+                duration: FOCUS_ANIMATION_DURATION,
+                ease: FOCUS_EASING
+            }, 0)
+            .to(camera, {
+                zoom: FOCUSED_CAMERA_ZOOM,
+                duration: FOCUS_ANIMATION_DURATION,
+                ease: FOCUS_EASING,
+                onUpdate: () => camera.updateProjectionMatrix()
+            }, 0);
+
+            const crossfadeStartTime = FOCUS_ANIMATION_DURATION - CROSSFADE_DURATION;
+            timeline.to(textureOverlayPlane.material, {
+                opacity: 0,
+                duration: CROSSFADE_DURATION,
+                ease: "none"
+            }, crossfadeStartTime)
+            .to(placeholderPlane.material, {
+                opacity: 0,
+                duration: CROSSFADE_DURATION,
+                ease: "none"
+            }, crossfadeStartTime)
+            .to(cssObject.element.style, {
+                opacity: 1,
+                duration: CROSSFADE_DURATION,
+                ease: "none"
+            }, crossfadeStartTime);
+        }
+
+        function exitFocusMode() {
+            if (!isFocused || isInBootState) return;
+            isFocused = false;
+
+            controls.enabled = false;
+
+            const iframe = cssObject.element;
+            if (iframe && iframe.contentWindow) {
+                //iframe.contentWindow.postMessage('captureScreenshot', '*');
+                console.log("Requested screenshot from iframe.");
+            } else {
+                console.error("Cannot access iframe contentWindow to request screenshot.");
+                createFallbackPlaceholder();
+            }
+
+            controls.minAzimuthAngle = -Infinity;
+            controls.maxAzimuthAngle = Infinity;
+            controls.minPolarAngle = -Infinity;
+            controls.maxPolarAngle = Infinity;
+            controls.minZoom = -Infinity;
+            controls.maxZoom = Infinity;
+
+            const timeline = gsap.timeline({
+                onComplete: () => {
+                    controls.minAzimuthAngle = initialControlLimits.minAzimuth;
+                    controls.maxAzimuthAngle = initialControlLimits.maxAzimuth;
+                    controls.minPolarAngle = initialControlLimits.minPolar;
+                    controls.maxPolarAngle = initialControlLimits.maxPolar;
+                    controls.minZoom = initialControlLimits.minZoom;
+                    controls.maxZoom = initialControlLimits.maxZoom;
+                    controls.enabled = true;
+                    cssObject.visible = false;
+                }
+            });
+
+            // Synchronize the hover fade-in with the main camera animation
+            timeline.to(hoverIntensity, {
+                value: 1,
+                duration: HOVER_FADE_DURATION,
+                ease: "power2.inOut"
+            }, 0);
+
+            timeline.set(placeholderPlane, { visible: true }, 0);
+
+            timeline.to(cssObject.element.style, {
+                opacity: 0,
+                duration: CROSSFADE_DURATION,
+                ease: "none"
+            }, 0)
+            .to(textureOverlayPlane.material, {
+                opacity: 1,
+                duration: CROSSFADE_DURATION,
+                ease: "none"
+            }, 0)
+            .to(placeholderPlane.material, {
+                opacity: 1,
+                duration: CROSSFADE_DURATION,
+                ease: "none"
+            }, 0);
+
+            timeline.to(camera.position, {
+                x: initialCameraState.position.x,
+                y: initialCameraState.position.y,
+                z: initialCameraState.position.z,
+                duration: FOCUS_ANIMATION_DURATION,
+                ease: FOCUS_EASING
+            }, 0)
+            .to(controls.target, {
+                x: initialCameraState.target.x,
+                y: initialCameraState.target.y,
+                z: initialCameraState.target.z,
+                duration: FOCUS_ANIMATION_DURATION,
+                ease: FOCUS_EASING
+            }, 0)
+            .to(camera, {
+                zoom: INITIAL_CAMERA_ZOOM,
+                duration: FOCUS_ANIMATION_DURATION,
+                ease: FOCUS_EASING,
+                onUpdate: () => camera.updateProjectionMatrix()
+            }, 0);
+        }
+
+        function animateFromBootToInitial() {
+            isInBootState = false;
+
+            controls.minAzimuthAngle = -Infinity;
+            controls.maxAzimuthAngle = Infinity;
+            controls.minPolarAngle = -Infinity;
+            controls.maxPolarAngle = Infinity;
+            controls.minZoom = -Infinity;
+            controls.maxZoom = Infinity;
+
+            const timeline = gsap.timeline({
+                onComplete: () => {
+                    controls.minAzimuthAngle = initialControlLimits.minAzimuth;
+                    controls.maxAzimuthAngle = initialControlLimits.maxAzimuth;
+                    controls.minPolarAngle = initialControlLimits.minPolar;
+                    controls.maxPolarAngle = initialControlLimits.maxPolar;
+                    controls.minZoom = initialControlLimits.minZoom;
+                    controls.maxZoom = initialControlLimits.maxZoom;
+                    controls.enabled = true;
+                    cssObject.visible = false;
+                }
+            });
+
+            // Synchronize the hover fade-in with the main camera animation
+            timeline.to(hoverIntensity, {
+                value: 1,
+                duration: HOVER_FADE_DURATION,
+                ease: "power2.inOut"
+            }, 0);
+
+            timeline.set(placeholderPlane, { visible: true }, 0);
+
+            timeline.to(camera.position, {
+                x: initialCameraState.position.x,
+                y: initialCameraState.position.y,
+                z: initialCameraState.position.z,
+                duration: BOOT_ANIMATION_DURATION,
+                ease: BOOT_ANIMATION_EASING
+            }, 0)
+            .to(controls.target, {
+                x: initialCameraState.target.x,
+                y: initialCameraState.target.y,
+                z: initialCameraState.target.z,
+                duration: BOOT_ANIMATION_DURATION,
+                ease: BOOT_ANIMATION_EASING
+            }, 0)
+            .to(camera, {
+                zoom: INITIAL_CAMERA_ZOOM,
+                duration: BOOT_ANIMATION_DURATION,
+                ease: BOOT_ANIMATION_EASING,
+                onUpdate: () => camera.updateProjectionMatrix()
+            }, 0)
+            .to(cssObject.element.style, {
+                opacity: 0,
+                duration: BOOT_CROSSFADE_DURATION,
+                ease: "none"
+            }, 0)
+            .to(textureOverlayPlane.material, {
+                opacity: 1,
+                duration: BOOT_CROSSFADE_DURATION,
+                ease: "none"
+            }, 0)
+            .to(placeholderPlane.material, {
+                opacity: 1,
+                duration: BOOT_CROSSFADE_DURATION,
+                ease: "none"
+            }, 0);
+
+        }
+
+        function createFallbackPlaceholder() {
+            const canvas = document.createElement('canvas');
+            const textureResolution = 512;
+            canvas.width = textureResolution;
+            canvas.height = textureResolution * (PLANE_RESOLUTION.height / PLANE_RESOLUTION.width);
+
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = PLANE_FALLBACK_COLOR;
+
+            const radius = (PLANE_CORNER_RADIUS_PX / PLANE_RESOLUTION.width) * textureResolution;
+
+            ctx.beginPath();
+            ctx.roundRect(0, 0, canvas.width, canvas.height, radius);
+            ctx.fill();
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+
+            if (placeholderPlane.material.map) {
+                placeholderPlane.material.map.dispose();
+            }
+            placeholderPlane.material.map = texture;
+            placeholderPlane.material.needsUpdate = true;
+        }
+
+        window.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'screenshotData') {
+                console.log("Received screenshot data from iframe.");
+                const dataUrl = event.data.dataUrl;
+
+                const loader = new THREE.TextureLoader();
+                loader.load(dataUrl, (texture) => {
+                    texture.colorSpace = THREE.SRGBColorSpace;
+                     texture.anisotropy = maxAnisotropy;
+                    if (placeholderPlane.material.map) {
+                        placeholderPlane.material.map.dispose();
+                    }
+                    placeholderPlane.material.map = texture;
+                    placeholderPlane.material.needsUpdate = true;
+                }, undefined, (error) => {
+                    console.error("Error loading screenshot texture:", error);
+                    createFallbackPlaceholder();
+                });
+            }
+        });
+
+        // --- UPDATED: handleSceneClick with new blink animation ---
+        function handleSceneClick(event) {
+            if (isInBootState) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            const objectsToTest = scene.children.filter(obj => obj !== textureOverlayPlane);
+            const intersects = raycaster.intersectObjects(objectsToTest, true);
+
+            if (intersects.length > 0) {
+                const firstIntersected = intersects[0].object;
+
+                // --- Check if the clicked object is PART of the 86body group ---
+                let is86BodyPart = false;
+                if (body86) {
+                    let currentObject = firstIntersected;
+                    while (currentObject.parent) {
+                        if (currentObject.parent === body86) {
+                            is86BodyPart = true;
+                            break;
+                        }
+                        currentObject = currentObject.parent;
+                    }
+                }
+
+                if (is86BodyPart && !gsap.isTweening(body86.position)) {
+                    // Animate the button press on the GROUP
+                    gsap.timeline()
+                        .to(body86.position, { y: body86InitialY - BODY86_PRESS_DEPTH, duration: 0.1 })
+                        .to(body86.position, { y: body86InitialY, duration: 0.5, ease: `elastic.out(1, ${BODY86_BOUNCE_ELASTICITY})` });
+
+                    // Animate the light blink: Flash ON, then fade OFF
+                    if (lights86Material && !gsap.isTweening(lights86Material.color)) {
+                        const blinkTimeline = gsap.timeline({
+                            repeat: BODY86_LIGHT_BLINK_COUNT -1 // Repeat N-1 times for a total of N blinks
+                        });
+
+                        // Instantly flash ON
+                        blinkTimeline.set(lights86Material, {
+                            emissiveIntensity: BODY86_LIGHT_MAX_INTENSITY,
+                            color: new THREE.Color(BODY86_LIGHT_EMISSIVE_COLOR)
+                        })
+                        // Then fade back to the OFF state
+                        .to(lights86Material, {
+                            emissiveIntensity: 0.1,
+                            duration: BODY86_LIGHT_BLINK_DURATION,
+                            ease: "power2.out"
+                        })
+                        .to(lights86Material.color, {
+                            r: new THREE.Color(BODY86_LIGHT_BASE_COLOR).r,
+                            g: new THREE.Color(BODY86_LIGHT_BASE_COLOR).g,
+                            b: new THREE.Color(BODY86_LIGHT_BASE_COLOR).b,
+                            duration: BODY86_LIGHT_BLINK_DURATION,
+                            ease: "power2.out"
+                        }, "<"); // The '<' makes this animation run in parallel with the one above
+                    }
+
+                    // --- NEW: Animate the ground lights ---
+                    if (groundLightLeft && groundLightRight) {
+                        const groundLightTimeline = gsap.timeline({
+                            repeat: BODY86_LIGHT_BLINK_COUNT - 1
+                        });
+                        groundLightTimeline.set([groundLightLeft.material.uniforms.uOpacity, groundLightRight.material.uniforms.uOpacity], {
+                            value: BODY86_GROUND_LIGHT_MAX_OPACITY
+                        })
+                        .to([groundLightLeft.material.uniforms.uOpacity, groundLightRight.material.uniforms.uOpacity], {
+                            value: 0,
+                            duration: BODY86_LIGHT_BLINK_DURATION,
+                            ease: "power2.out"
+                        });
+                    }
+
+                    return; // Stop further processing
+                }
+
+
+                let isWobbleHeadPart = false;
+                if (lottieHeadPivot) {
+                    let currentObject = firstIntersected;
+                    while (currentObject.parent) {
+                        if (currentObject.parent === lottieHeadPivot) {
+                            isWobbleHeadPart = true;
+                            break;
+                        }
+                        currentObject = currentObject.parent;
+                    }
+                }
+
+                if (isWobbleHeadPart) {
+                    wobbleHead();
+                    return;
+                }
+
+                if (firstIntersected === placeholderPlane && placeholderPlane.visible) {
+                    enterFocusMode();
+                    return;
+                }
+            }
+
+            if (isFocused) {
+                exitFocusMode();
+            }
+        }
+
+        function wobbleHead() {
+            if (!lottieHeadPivot || gsap.isTweening(lottieHeadPivot.rotation)) return;
+
+            lottieHeadPivot.rotation.x = 0;
+            lottieHeadPivot.rotation.z = 0;
+
+            const wobbleAxis = Math.random() > 0.5 ? 'x' : 'z';
+            const direction = Math.random() > 0.5 ? 1 : -1;
+
+            const tl = gsap.timeline();
+            tl.to(lottieHeadPivot.rotation, { [wobbleAxis]: direction * WOBBLE_STRENGTH, duration: WOBBLE_DURATION * 0.2, ease: "power1.out" })
+              .to(lottieHeadPivot.rotation, { [wobbleAxis]: -direction * WOBBLE_STRENGTH * 0.6, duration: WOBBLE_DURATION * 0.2, ease: "power1.inOut" })
+              .to(lottieHeadPivot.rotation, { [wobbleAxis]: direction * WOBBLE_STRENGTH * 0.3, duration: WOBBLE_DURATION * 0.2, ease: "power1.inOut" })
+              .to(lottieHeadPivot.rotation, { [wobbleAxis]: -direction * WOBBLE_STRENGTH * 0.15, duration: WOBBLE_DURATION * 0.2, ease: "power1.inOut" })
+              .to(lottieHeadPivot.rotation, { [wobbleAxis]: 0, duration: WOBBLE_DURATION * 0.2, ease: "power1.in" });
+        }
+
+        let messageTimeout;
+        function showMessage(message, type = 'success') {
+            messageText.textContent = message;
+
+            messageBox.className = 'absolute top-5 left-1/2 -translate-x-1/2 p-4 rounded-lg text-white font-semibold shadow-2xl z-[70] pointer-events-none opacity-0 -translate-y-20';
+
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-500');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-500');
+            } else if (type === 'warning') {
+                 messageBox.classList.add('bg-yellow-500');
+            }
+
+            messageBox.classList.remove('hidden');
+
+            gsap.to(messageBox, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" });
+
+            if (messageTimeout) {
+                clearTimeout(messageTimeout);
+            }
+
+            messageTimeout = setTimeout(() => {
+                gsap.to(messageBox, { opacity: 0, y: -20, duration: 0.5, ease: "power2.in", onComplete: () => {
+                    messageBox.classList.add('hidden');
+                }});
+            }, 4000);
+        }
+
+        function createSmokeEffect(parentObject) {
+            const vertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+
+            const fragmentShader = `
+                uniform float uTime;
+                uniform float uTimeFrequency;
+                uniform vec2 uUvFrequency;
+                uniform vec3 uColor;
+                uniform float uLength;
+                uniform float uOpacity;
+                uniform float uGlobalOpacity;
+
+                varying vec2 vUv;
+
+                vec2 fade(vec2 t) { return t * t * t * (t * (t * 6.0 - 15.0) + 10.0); }
+                vec4 permute(vec4 x) { return mod(((x * 34.0) + 1.0) * x, 289.0); }
+
+                float perlin2d(vec2 P) {
+                  vec4 Pi = floor(P.xyxy) + vec4(0.0, 0.0, 1.0, 1.0);
+                  vec4 Pf = fract(P.xyxy) - vec4(0.0, 0.0, 1.0, 1.0);
+                  Pi = mod(Pi, 289.0);
+                  vec4 ix = Pi.xzxz;
+                  vec4 iy = Pi.yyww;
+                  vec4 fx = Pf.xzxz;
+                  vec4 fy = Pf.yyww;
+                  vec4 i = permute(permute(ix) + iy);
+                  vec4 gx = 2.0 * fract(i * 0.0243902439) - 1.0;
+                  vec4 gy = abs(gx) - 0.5;
+                  vec4 tx = floor(gx + 0.5);
+                  gx = gx - tx;
+                  vec2 g00 = vec2(gx.x, gy.x);
+                  vec2 g10 = vec2(gx.y, gy.y);
+                  vec2 g01 = vec2(gx.z, gy.z);
+                  vec2 g11 = vec2(gx.w, gy.w);
+                  vec4 norm = 1.79284291400159 - 0.85373472095314 * vec4(dot(g00, g00), dot(g01, g01), dot(g10, g10), dot(g11, g11));
+                  g00 *= norm.x;
+                  g01 *= norm.y;
+                  g10 *= norm.z;
+                  g11 *= norm.w;
+                  float n00 = dot(g00, vec2(fx.x, fy.x));
+                  float n10 = dot(g10, vec2(fx.y, fy.y));
+                  float n01 = dot(g01, vec2(fx.z, fy.z));
+                  float n11 = dot(g11, vec2(fx.w, fy.w));
+                  vec2 fade_xy = fade(Pf.xy);
+                  vec2 n_x = mix(vec2(n00, n01), vec2(n10, n11), fade_xy.x);
+                  float n_xy = mix(n_x.x, n_x.y, fade_xy.y);
+                  return 2.3 * n_xy;
+                }
+
+                void main() {
+                  vec2 uv = vUv * uUvFrequency;
+                  uv.y -= uTime * uTimeFrequency;
+
+                  float borderAlpha = smoothstep(0.0, 0.25, vUv.x) * smoothstep(1.0, 0.75, vUv.x);
+                  borderAlpha *= smoothstep(uLength, 0.0, vUv.y);
+                  borderAlpha *= smoothstep(0.0, 0.1, vUv.y);
+
+                  float perlin = perlin2d(uv);
+                  perlin *= borderAlpha;
+                  perlin *= 0.7;
+                  perlin = min(perlin, 1.0);
+
+                  gl_FragColor = vec4(uColor, perlin * uOpacity * uGlobalOpacity);
+                }
+            `;
+
+            const createSmokeMaterial = (timeFrequency) => {
+                return new THREE.ShaderMaterial({
+                    vertexShader,
+                    fragmentShader,
+                    transparent: true,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                    uniforms: {
+                        uTime: { value: 0 },
+                        uTimeFrequency: { value: timeFrequency },
+                        uUvFrequency: { value: new THREE.Vector2(SMOKE_UV_FREQUENCY_X, SMOKE_UV_FREQUENCY_Y) },
+                        uColor: { value: new THREE.Color(SMOKE_COLOR) },
+                        uLength: { value: SMOKE_LENGTH },
+                        uOpacity: { value: 1.0 },
+                        uGlobalOpacity: { value: SMOKE_GROUP_OPACITY }
+                    }
+                });
+            };
+
+            smokeMaterials = [createSmokeMaterial(SMOKE_TIME_FREQUENCY), createSmokeMaterial(SMOKE_TIME_FREQUENCY-0.1)];
+
+            smokeGroup = new THREE.Group();
+            const smokeGeometry = new THREE.PlaneGeometry(0.2, 1, 1, 10);
+
+            const planes = [
+                new THREE.Mesh(smokeGeometry, smokeMaterials[0]),
+                new THREE.Mesh(smokeGeometry, smokeMaterials[1])
+            ];
+
+            planes[0].rotation.y = -Math.PI / 4;
+            planes[1].rotation.y = Math.PI / 4;
+
+            smokeGroup.add(planes[0], planes[1]);
+
+            const box = new THREE.Box3().setFromObject(parentObject);
+            const center = box.getCenter(new THREE.Vector3());
+            const steamOrigin = new THREE.Vector3(center.x, box.max.y, center.z);
+            parentObject.worldToLocal(steamOrigin);
+            smokeGroup.position.copy(steamOrigin).add(SMOKE_GROUP_POSITION_OFFSET);
+            smokeGroup.scale.set(SMOKE_GROUP_SCALE, SMOKE_GROUP_SCALE, SMOKE_GROUP_SCALE);
+            smokeGroup.rotation.set(
+                THREE.MathUtils.degToRad(SMOKE_GROUP_ROTATION_DEGREES.x),
+                THREE.MathUtils.degToRad(SMOKE_GROUP_ROTATION_DEGREES.y),
+                THREE.MathUtils.degToRad(SMOKE_GROUP_ROTATION_DEGREES.z)
+            );
+
+            parentObject.add(smokeGroup);
+        }
+
+        function createCoffeePlane(parentObject) {
+            const coffeeGeometry = new THREE.CircleGeometry(COFFEE_PLANE_SCALE, 32);
+            const coffeeMaterial = new THREE.MeshStandardMaterial({
+                color: COFFEE_PLANE_COLOR,
+                metalness: 0.8,
+                roughness: 0.1,
+                side: THREE.DoubleSide
+            });
+            const coffeePlane = new THREE.Mesh(coffeeGeometry, coffeeMaterial);
+
+            const box = new THREE.Box3().setFromObject(parentObject);
+            const center = box.getCenter(new THREE.Vector3());
+            const coffeeOrigin = new THREE.Vector3(center.x, box.max.y, center.z);
+
+            parentObject.worldToLocal(coffeeOrigin);
+            coffeePlane.position.copy(coffeeOrigin).add(COFFEE_PLANE_POSITION_OFFSET);
+            coffeePlane.rotation.x = -Math.PI / 2;
+
+            parentObject.add(coffeePlane);
+
+            const coffeeLight = new THREE.PointLight(COFFEE_LIGHT_COLOR, COFFEE_LIGHT_INTENSITY, COFFEE_LIGHT_DISTANCE);
+            coffeeLight.position.copy(coffeePlane.position).add(COFFEE_LIGHT_POSITION_OFFSET);
+            parentObject.add(coffeeLight);
+        }
+
+        // --- Function to load the bee model ---
+        function loadBeeModel(originPosition) {
+            const loader = new GLTFLoader();
+
+            loader.load(BEE_URL, (gltf) => {
+                if (beeModel) {
+                    scene.remove(beeModel);
+                }
+                beeModel = gltf.scene;
+
+                const basePosition = originPosition.clone().add(BEE_POSITION);
+                beeModel.position.copy(basePosition);
+                beeTargetPosition.copy(basePosition);
+
+                beeModel.rotation.set(
+                    THREE.MathUtils.degToRad(BEE_ROTATION.x),
+                    THREE.MathUtils.degToRad(BEE_ROTATION.y),
+                    THREE.MathUtils.degToRad(BEE_ROTATION.z)
+                );
+                beeModel.scale.copy(BEE_SCALE);
+
+                beeInitialPosition.copy(basePosition);
+                previousBeePosition.copy(basePosition);
+                beeIdleStartTime = clock.getElapsedTime();
+
+                // Set up animation
+                if (gltf.animations && gltf.animations.length) {
+                    beeMixer = new THREE.AnimationMixer(beeModel);
+
+                    gltf.animations.forEach((clip) => {
+                        const action = beeMixer.clipAction(clip);
+                        action.timeScale = BEE_ANIMATION_SPEED;
+                        action.play();
+                    });
+
+                    showMessage(`Bee animation started (${gltf.animations.length} clips).`, 'success');
+                } else {
+                    showMessage('Bee model loaded, but no animations were found.', 'warning');
+                }
+
+                scene.add(beeModel);
+                showMessage('Bee model loaded successfully!', 'success');
+
+                // Start the bee's behavior loop
+                startNewBeeMovement();
+
+            }, undefined, (error) => {
+                console.error('An error happened while loading the bee model:', error);
+                showMessage('Error loading the bee model. Check console.', 'error');
+            });
+        }
+
+        // --- UPDATED: Function to start a new movement cycle for the bee with speed control ---
+        function startNewBeeMovement(speedMultiplier = 1) {
+            if (!beeModel) return;
+            beeState = 'MOVING';
+
+            // Generate a new random target within the defined radius from the initial position
+            const newTargetX = beeInitialPosition.x + (Math.random() - 0.5) * 2 * BEE_MOVEMENT_RADIUS.x;
+            const newTargetY = beeInitialPosition.y + (Math.random() - 0.5) * 2 * BEE_MOVEMENT_RADIUS.y;
+            const newTargetZ = beeInitialPosition.z + (Math.random() - 0.5) * 2 * BEE_MOVEMENT_RADIUS.z;
+
+            const newTargetPosition = new THREE.Vector3(newTargetX, newTargetY, newTargetZ);
+
+            const moveDuration = THREE.MathUtils.lerp(BEE_MOVE_DURATION.min, BEE_MOVE_DURATION.max, Math.random());
+
+            // Use GSAP to animate the bee to the new target position
+            gsap.to(beeModel.position, {
+                x: newTargetX,
+                y: newTargetY,
+                z: newTargetZ,
+                duration: moveDuration / speedMultiplier, // Divide duration by the multiplier
+                ease: "power2.inOut",
+                onComplete: () => {
+                    beeState = 'IDLE';
+                    beeTargetPosition.copy(newTargetPosition);
+                    beeIdleStartTime = clock.getElapsedTime(); // Fix stutter by resetting idle time
+                    beeStateTimer = THREE.MathUtils.lerp(BEE_IDLE_DURATION.min, BEE_IDLE_DURATION.max, Math.random());
+                }
+            });
+        }
+
+        // --- Function to handle the bee's state machine ---
+        function updateBeeBehavior(delta, elapsedTime) {
+            if (!beeModel) return;
+
+            // --- Rotation Logic (applies in both states for smoothness) ---
+            const velocity = new THREE.Vector3().subVectors(beeModel.position, previousBeePosition);
+            if (velocity.lengthSq() > 0.00001) {
+                const targetQuaternion = new THREE.Quaternion();
+                const lookAtPosition = new THREE.Vector3().addVectors(beeModel.position, velocity);
+                const tempMatrix = new THREE.Matrix4();
+                tempMatrix.lookAt(beeModel.position, lookAtPosition, beeModel.up);
+                targetQuaternion.setFromRotationMatrix(tempMatrix);
+
+                const horizontalVelocity = new THREE.Vector3(velocity.x, 0, velocity.z);
+                const bankAngle = -horizontalVelocity.length() * BEE_TILT_STRENGTH;
+                const bankQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), bankAngle);
+
+                targetQuaternion.multiply(bankQuaternion);
+
+                // Use rotateTowards for a capped turn speed
+                beeModel.quaternion.rotateTowards(targetQuaternion, BEE_MAX_YAW_RADIANS_PER_SEC * delta);
+            }
+            previousBeePosition.copy(beeModel.position);
+
+
+            // --- State-specific Logic ---
+            if (beeState === 'IDLE') {
+                // Apply a small, local hover animation around the target position
+                const timeInState = elapsedTime - beeIdleStartTime;
+                const hoverOffsetX = Math.sin(timeInState * 4) * 0.02;
+                const hoverOffsetY = Math.sin(timeInState * 5) * 0.03;
+                const hoverOffsetZ = Math.sin(timeInState * 3) * 0.02;
+                beeModel.position.x = beeTargetPosition.x + hoverOffsetX;
+                beeModel.position.y = beeTargetPosition.y + hoverOffsetY;
+                beeModel.position.z = beeTargetPosition.z + hoverOffsetZ;
+
+                // Countdown the idle timer
+                beeStateTimer -= delta;
+                if (beeStateTimer <= 0) {
+                    startNewBeeMovement(); // Autonomous movement uses default speed (1x)
+                }
+            }
+        }
+
+        // --- NEW: Function to create the ground light material ---
+        function createGroundLightMaterial() {
+            const vertexShader = `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+
+            const fragmentShader = `
+                uniform vec3 uColor;
+                uniform float uOpacity;
+                varying vec2 vUv;
+
+                void main() {
+                    vec2 centeredUv = vUv - 0.5;
+                    float dist = length(centeredUv);
+
+                    // Create a gradient for the angled light effect
+                    float angleGradient = smoothstep(0.5, -0.2, vUv.y);
+
+                    // Create the soft ellipse shape
+                    float alpha = smoothstep(0.5, 0.0, dist);
+
+                    gl_FragColor = vec4(uColor, alpha * uOpacity * angleGradient);
+                }
+            `;
+
+            return new THREE.ShaderMaterial({
+                vertexShader,
+                fragmentShader,
+                transparent: true,
+                depthWrite: false,
+                uniforms: {
+                    uColor: { value: new THREE.Color(BODY86_GROUND_LIGHT_COLOR) },
+                    uOpacity: { value: 0.0 } // Start invisible
+                }
+            });
+        }
+
+        // --- NEW: Function to create the ground lights ---
+        function createGroundLights(originObject) {
+            const groundLightGeometry = new THREE.PlaneGeometry(1, 1);
+
+            // Create left light
+            const leftMaterial = createGroundLightMaterial();
+            groundLightLeft = new THREE.Mesh(groundLightGeometry, leftMaterial);
+
+            const leftPosition = originObject.position.clone().add(BODY86_GROUND_LIGHT_OFFSET_LEFT);
+            groundLightLeft.position.set(leftPosition.x, 0.01, leftPosition.z); // Place slightly above ground
+            groundLightLeft.rotation.x = -Math.PI / 2; // Lay flat on the ground
+            groundLightLeft.rotation.z = BODY86_GROUND_LIGHT_ROTATION;
+            groundLightLeft.scale.copy(BODY86_GROUND_LIGHT_SCALE);
+            scene.add(groundLightLeft);
+
+            // Create right light
+            const rightMaterial = createGroundLightMaterial();
+            groundLightRight = new THREE.Mesh(groundLightGeometry, rightMaterial);
+
+            const rightPosition = originObject.position.clone().add(BODY86_GROUND_LIGHT_OFFSET_RIGHT);
+            groundLightRight.position.set(rightPosition.x, 0.01, rightPosition.z);
+            groundLightRight.rotation.x = -Math.PI / 2;
+            groundLightRight.rotation.z = BODY86_GROUND_LIGHT_ROTATION;
+            groundLightRight.scale.copy(BODY86_GROUND_LIGHT_SCALE);
+            scene.add(groundLightRight);
+        }
+
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            // Animate the camera's parent group for a subtle hover effect
+            if (cameraGroup) {
+                cameraGroup.position.x = Math.cos(elapsedTime * HOVER_SPEED) * HOVER_AMPLITUDE * hoverIntensity.value;
+                cameraGroup.position.y = Math.sin(elapsedTime * HOVER_SPEED) * HOVER_AMPLITUDE * hoverIntensity.value;
+            }
+
+            // --- UPDATED: Bee hover interaction logic ---
+            if (beeModel) {
+                // Update the raycaster with the camera and mouse position
+                raycaster.setFromCamera(mouse, camera);
+
+                // Check for intersections with the bee model
+                const intersects = raycaster.intersectObjects(beeModel.children, true);
+
+                if (intersects.length > 0) {
+                    // If the mouse is hovering over the bee and it's currently idle, trigger its movement
+                    if (beeState === 'IDLE') {
+                        startNewBeeMovement(3.7); // Hover-triggered movement is 1.6x faster
+                    }
+                    // Change the cursor to a pointer to indicate interactivity
+                    document.body.style.cursor = 'pointer';
+                } else {
+                    // Revert the cursor to default when not hovering
+                    document.body.style.cursor = 'default';
+                }
+            }
+
+            if (beeMixer) {
+                beeMixer.update(delta);
+            }
+
+            updateBeeBehavior(delta, elapsedTime);
+
+            if (smokeGroup) {
+                smokeMaterials.forEach(m => m.uniforms.uTime.value = elapsedTime);
+
+                camera.getWorldDirection(cameraDirection);
+
+                smokeGroup.children.forEach((plane, index) => {
+                    if (smokeMaterials[index]) {
+                        const worldNormal = planeNormal.clone().applyQuaternion(plane.getWorldQuaternion(new THREE.Quaternion()));
+                        const dot = Math.abs(worldNormal.dot(cameraDirection));
+                        smokeMaterials[index].uniforms.uOpacity.value = dot;
+                    }
+                });
+
+                const smokeWorldPosition = new THREE.Vector3();
+                smokeGroup.getWorldPosition(smokeWorldPosition);
+                const angle = Math.atan2(
+                    camera.position.x - smokeWorldPosition.x,
+                    camera.position.z - smokeWorldPosition.z
+                );
+                smokeGroup.rotation.y = angle + THREE.MathUtils.degToRad(SMOKE_GROUP_ROTATION_DEGREES.y);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+            cssRenderer.render(scene, camera);
+        }
+
+        // --- Other Event Listeners ---
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            loadGLBModel(url);
+        });
+
+        bgColorPicker.addEventListener('input', (event) => {
+            const color = event.target.value;
+            document.body.style.backgroundColor = color;
+
+            const L = new THREE.Color(color).getHSL({ h: 0, s: 0, l: 0 }).l;
+            const textColorClass = L > 0.5 ? 'text-gray-900' : 'text-white';
+            const textSubtleColorClass = L > 0.5 ? 'text-gray-600' : 'text-gray-300';
+            const codeBg = L > 0.5 ? 'bg-gray-200' : 'bg-gray-700';
+            const codeText = L > 0.5 ? 'text-pink-600' : 'text-pink-400';
+            const ishantTextColor = L > 0.5 ? 'text-black' : 'text-white';
+
+            document.getElementById('title-text').className = `text-2xl font-bold ${textColorClass} drop-shadow-sm`;
+            document.getElementById('instructions').className = `text-sm ${textSubtleColorClass} drop-shadow-sm max-w-sm`;
+            document.getElementById('noise-opacity-label').className = `text-sm font-medium ${textSubtleColorClass}`;
+            document.getElementById('noise-speed-slider').className = `text-sm font-medium ${textSubtleColorClass}`;
+            document.getElementById('object-name-label').className = `text-sm font-medium ${textSubtleColorClass}`;
+            document.getElementById('ishant-text').className = `text-9xl font-black ${ishantTextColor} opacity-10 select-none`;
+
+            const codeText1 = document.getElementById('code-text-1');
+            if (codeText1) {
+                codeText1.className = `px-1 rounded-md ${codeBg} ${codeText}`;
+            }
+            const codeText2 = document.getElementById('code-text-2');
+            if (codeText2) {
+                codeText2.className = `px-1 rounded-md ${codeBg} ${codeText}`;
+            }
+        });
+
+        noiseOpacitySlider.addEventListener('input', (event) => {
+            noiseLayer.style.opacity = event.target.value;
+        });
+
+        noiseSpeedSlider.addEventListener('input', (event) => {
+            noiseLayer.style.animationDuration = `${event.target.value}s`;
+        });
+
+        applyGlassBtn.addEventListener('click', () => {
+            const targetName = objectNameInput.value;
+            if (!loadedModel || !targetName) {
+                showMessage('Please load a model and enter an object name first.', 'warning');
+                return;
+            }
+
+            if (internalLight) {
+                internalLight.parent.remove(internalLight);
+                internalLight.dispose();
+            }
+
+            let objectFound = false;
+            loadedModel.traverse((child) => {
+                if (child.isMesh && child.name === targetName) {
+                    objectFound = true;
+
+                    const glassMaterial = new THREE.MeshPhysicalMaterial({
+                        roughness: 0.1,
+                        transmission: 1.0,
+                        thickness: 1.5,
+                        ior: 1.5,
+                    });
+
+                    child.material = glassMaterial;
+                    internalLight = new THREE.PointLight(0xffe082, 5, 2);
+                    child.add(internalLight);
+                }
+            });
+
+            if (!objectFound) {
+                showMessage(`Object with name "${targetName}" not found in the model.`, 'error');
+            } else {
+                showMessage(`Glass effect applied to "${targetName}".`, 'success');
+            }
+        });
+
+        toggleUiBtn.addEventListener('click', () => {
+            uiControlsContainer.classList.toggle('hidden');
+            topLeftUi.classList.toggle('hidden');
+            eyeIconOpen.classList.toggle('hidden');
+            eyeIconClosed.classList.toggle('hidden');
+        });
+
+        window.addEventListener('keydown', (event) => {
+            let targetKey = null;
+
+            if (event.code === 'Space') {
+                targetKey = spacebarKey;
+            } else if (keyboardKeys.length > 0) {
+                targetKey = keyboardKeys[Math.floor(Math.random() * keyboardKeys.length)];
+            }
+
+            if (targetKey && !gsap.isTweening(targetKey.position)) {
+                const initialY = targetKey.position.y;
+                const pressDepth = -0.05;
+
+                gsap.timeline()
+                    .to(targetKey.position, { y: initialY + pressDepth, duration: 0.1 })
+                    .to(targetKey.position, { y: initialY, duration: 0.2, ease: "elastic.out(1, 0.5)" });
+            }
+        });
+
+        // --- UPDATED: loadGLBModel with new default light state ---
+        function loadGLBModel(url) {
+            gsap.set(revealLayer, { opacity: 1 });
+            revealLayer.style.display = 'block';
+
+            const loader = new GLTFLoader();
+            instructions.textContent = 'Use your mouse to orbit (left-click), pan (right-click), and zoom (scroll).';
+
+            loader.load(url,
+                (gltf) => {
+                    // --- Perform all heavy processing first, while revealLayer is visible ---
+                    if (loadedModel) {
+                        scene.remove(loadedModel);
+                    }
+
+                    loadedModel = gltf.scene;
+
+                    console.log("--- GLTF Model Objects ---");
+                    loadedModel.traverse((child) => {
+                        console.log(`- Name: '${child.name}' (Type: ${child.type})`);
+                    });
+                    console.log("--------------------------");
+
+                    loadedModel.traverse((child) => {
+                        if (child.isMesh && child.material && child.material.map) {
+                            child.material.map.anisotropy = maxAnisotropy;
+                            child.material.map.needsUpdate = true;
+                        }
+                    });
+                    showMessage('Anisotropic filtering applied for sharper textures.', 'success');
+
+                    keyboardKeys = [];
+                    spacebarKey = null;
+                    lottieHead = null;
+                    lottieHeadPivot = null;
+                    let cupBase = null;
+
+                    loadedModel.traverse((child) => {
+                        if (child.isGroup) {
+                            if (child.name === "Lottiemon_Head") {
+                                lottieHead = child;
+                            }
+                            if (child.name === "Cup_Base") {
+                                cupBase = child;
+                            }
+                        }
+                        if (child.isMesh) {
+                            const match = child.name.match(/^Extruded(\d+)$/);
+                            if (match) {
+                                const keyNumber = parseInt(match[1], 10);
+                                if (keyNumber >= 10 && keyNumber <= 36) {
+                                    keyboardKeys.push(child);
+                                }
+                            } else if (child.name === 'Spacebar') {
+                                spacebarKey = child;
+                            }
+                        }
+                    });
+
+                    if (lottieHead) {
+                        showMessage('Lottiemon_Head found and enabled for wobble!', 'success');
+                        const box = new THREE.Box3().setFromObject(lottieHead);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const pivotPoint = new THREE.Vector3(center.x, box.min.y, center.z);
+
+                        lottieHeadPivot = new THREE.Group();
+                        lottieHeadPivot.position.copy(pivotPoint);
+
+                        const parent = lottieHead.parent;
+                        parent.add(lottieHeadPivot);
+
+                        lottieHead.position.sub(pivotPoint);
+                        lottieHeadPivot.add(lottieHead);
+                    } else {
+                        showMessage('Lottiemon_Head not found in this model.', 'warning');
+                    }
+
+                    if (cupBase) {
+                        showMessage('Cup_Base found! Adding smoke and coffee.', 'success');
+                        createSmokeEffect(cupBase);
+                        createCoffeePlane(cupBase);
+                    } else {
+                        showMessage('Cup_Base not found in this model.', 'warning');
+                    }
+
+                    const flowerVas = loadedModel.getObjectByName('Flower_Vas');
+                    if (flowerVas) {
+                        showMessage('Flower_Vas found! Loading the bee model.', 'success');
+                        const vasPosition = new THREE.Vector3();
+                        flowerVas.getWorldPosition(vasPosition);
+                        loadBeeModel(vasPosition);
+                    } else {
+                        showMessage('Flower_Vas object not found. The bee will not be loaded.', 'warning');
+                    }
+
+                    // --- Find the 86body group and its lights material ---
+                    loadedModel.traverse((child) => {
+                        // Find the body group by its name
+                        if (child.isGroup && child.name === '86body' && !body86) {
+                            body86 = child;
+                            body86.position.add(BODY86_POSITION_OFFSET); // Apply position offset
+                            body86InitialY = child.position.y; // Store its starting Y position
+                            console.log('Found group: 86body', body86);
+                            createGroundLights(body86); // NEW: Create ground lights once body is found
+                        }
+
+                        // Find the lights material by its name
+                        if (child.isMesh && child.material && child.material.name === '86Lights' && !lights86Material) {
+                            // Clone the material so our changes don't affect other objects
+                            lights86Material = child.material.clone();
+                            child.material = lights86Material;
+
+                            // Set up the material for emission
+                            lights86Material.emissive = new THREE.Color(BODY86_LIGHT_EMISSIVE_COLOR);
+
+                            // --- UPDATED: Set the default "off" state ---
+                            lights86Material.emissiveIntensity = 0.1;
+                            lights86Material.color.set(BODY86_LIGHT_BASE_COLOR);
+
+                            console.log('Found and configured material: 86Lights');
+                        }
+                    });
+
+                    scene.add(loadedModel);
+
+                    const box = new THREE.Box3().setFromObject(loadedModel);
+                    const size = box.getSize(new THREE.Vector3());
+                    const center = box.getCenter(new THREE.Vector3());
+
+                    const maxDim = Math.max(size.x, size.y, size.z);
+
+                    camera.near = maxDim * NEAR_PLANE_MULTIPLIER;
+                    camera.far = maxDim * FAR_PLANE_MULTIPLIER;
+                    camera.updateProjectionMatrix();
+
+                    const pannedTarget = center.clone();
+                    pannedTarget.x += INITIAL_CAMERA_PAN_X;
+                    pannedTarget.y += INITIAL_CAMERA_PAN_Y;
+
+                    initialCameraState.target.copy(pannedTarget);
+                    initialCameraState.position.copy(pannedTarget.clone().add(INITIAL_CAMERA_POSITION));
+
+                    const degToRad = Math.PI / 180;
+                    const initialAzimuth = controls.getAzimuthalAngle();
+                    const initialPolar = controls.getPolarAngle();
+                    initialControlLimits = {
+                        minAzimuth: initialAzimuth - (ORBIT_LIMIT_LEFT * degToRad),
+                        maxAzimuth: initialAzimuth + (ORBIT_LIMIT_RIGHT * degToRad),
+                        minPolar: initialPolar - (ORBIT_LIMIT_UP * degToRad),
+                        maxPolar: initialPolar + (ORBIT_LIMIT_DOWN * degToRad),
+                        minZoom: INITIAL_MIN_ZOOM,
+                        maxZoom: INITIAL_MAX_ZOOM
+                    };
+
+                    console.group("Camera Animation States & Calculated Values");
+                    console.log("%cBoot State (Starting View):", "color: cyan; font-weight: bold;");
+                    console.log("  Camera Position:", camera.position.clone());
+                    console.log("  Controls Target:", controls.target.clone());
+                    console.log("  Camera Zoom:", camera.zoom);
+                    console.groupEnd();
+
+                    isInBootState = true;
+                    controls.enabled = false;
+
+                    const iframe = cssObject.element;
+                    if (iframe && iframe.contentWindow) {
+                        //iframe.contentWindow.postMessage('captureScreenshot', '*');
+                          iframe.contentWindow.postMessage('boot_complete', '*');
+                        console.log("Requested initial screenshot from iframe for boot sequence.");
+                    } else {
+                        console.error("Cannot access iframe contentWindow to request initial screenshot.");
+                        createFallbackPlaceholder();
+                    }
+
+
+                     setTimeout(() => {
+                        setTimeout(() => {
+                            animateFromBootToInitial();
+                        }, BOOT_STATE_DELAY);
+
+                        gsap.to(revealLayer, {
+                            opacity: 0,
+                            duration: 0.85,
+                            ease: "power2.inOut",
+                            onComplete: () => {
+                                revealLayer.style.display = 'none';
+                            }
+                        });
+                    }, 1200);
+
+                    URL.revokeObjectURL(url);
+                },
+                undefined,
+                (error) => {
+                    console.error('An error happened while loading the model:', error);
+                    showMessage('Error loading model. Check console for details.', 'error');
+                    gsap.to(revealLayer, { opacity: 0, duration: 0.5, onComplete: () => { revealLayer.style.display = 'none'; }});
+                }
+            );
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            cssRenderer.setSize(window.innerWidth, window.innerHeight);
+            updateCameraFrustum();
+        });
+
+        init();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Y2K OS UI</title>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        /* --- Base Styles & Y2K Theme --- */
+        :root {
+            --background-color: #1a1a1a;
+            --grid-line-color: #333333;
+            --window-border-color: #000000;
+            --window-bg-color: #d6d6d6;
+            --text-color: #000000;
+            --start-menu-bg: #d6d6d6;
+            --start-menu-text: #000000;
+            --start-button-bg: #008000;
+            --taskbar-item-active-bg: #a8a8a8;
+
+            /* Y2K Theme Colors */
+            --theme-pink: #ff98e7;
+            --theme-green: #a3ff98;
+            --theme-blue: #98d2ff;
+            --selection-color: #000080;
+        }
+
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'VT323', monospace;
+            background-color: var(--background-color);
+            /* Default background is the grid */
+            background-image:
+                linear-gradient(var(--grid-line-color) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line-color) 1px, transparent 1px);
+            background-size: 60px 60px;
+            color: var(--text-color);
+            position: relative;
+            border-radius: 50px;
+        }
+
+        /* --- Screen Edge Fade Effect (Image Overlay) --- */
+        #vignette-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background-image: url('overlay.png');
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            z-index: 10001;
+            border-radius: 50px; /* Match body's radius */
+        }
+
+
+        /* --- Desktop Icons (Scaled Up) --- */
+        .desktop-icons {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 40px; /* Increased gap */
+            z-index: 1;
+        }
+        .desktop-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            cursor: pointer;
+            width: 150px; /* Increased width */
+            padding: 8px;
+            border: 1px solid transparent;
+        }
+        .desktop-icon .icon-bg {
+            width: 90px; /* Increased size */
+            height: 90px;
+            margin-bottom: 12px;
+            background-color: var(--window-bg-color);
+            border: 2px solid var(--window-border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .desktop-icon svg {
+            width: 64px; /* Increased size */
+            height: 64px;
+        }
+        .desktop-icon span {
+            color: #fff;
+            background-color: transparent;
+            padding: 3px 6px;
+            font-size: 30px; /* Increased font size */
+        }
+
+        /* Icon Selection Style */
+        .desktop-icon.selected span {
+            background-color: var(--selection-color);
+            color: #fff;
+        }
+
+
+        /* --- Window Styles (Scaled Up) --- */
+        .window {
+            position: absolute;
+            border: 4px solid var(--window-border-color); /* Thicker border */
+            box-shadow: 12px 12px 0px rgba(0,0,0,0.7); /* Larger shadow */
+            background-color: var(--window-bg-color);
+            display: flex;
+            flex-direction: column;
+            border-radius: 10px;
+        }
+        .window.hidden { display: none; }
+        .title-bar {
+            background-color: var(--window-bg-color);
+            color: var(--text-color);
+            padding: 8px 12px; /* Increased padding */
+            font-size: 36px; /* Increased font size */
+            cursor: move;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            user-select: none;
+            border-bottom: 4px solid var(--window-border-color);
+            border-radius: 8px 8px 0 0;
+        }
+        .title-bar-icon {
+            width: 32px; /* Increased size */
+            height: 32px;
+            flex-shrink: 0;
+        }
+        .title-text { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .title-bar-buttons { display: flex; margin-left: auto; }
+        .title-bar-button {
+            width: 34px; /* Increased size */
+            height: 34px;
+            border: 2px solid var(--window-border-color);
+            margin-left: 8px;
+            background-color: var(--window-bg-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            line-height: 28px;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+        .title-bar-button:active { border-style: inset; }
+        .content { flex-grow: 1; padding: 20px; overflow: hidden; font-size: 28px; }
+
+        /* Window Themes */
+        .window-theme-pink .title-bar { background-color: var(--theme-pink); }
+        .window-theme-green .title-bar { background-color: var(--theme-green); }
+        .window-theme-blue .title-bar { background-color: var(--theme-blue); }
+
+        /* --- Specific Window Content Styles (Scaled Up) --- */
+        .checkerboard {
+            background-size: 60px 60px;
+            background-position: 0 0, 0 30px, 30px -30px, -30px 0px;
+        }
+        .loading-bar-container { gap: 20px; }
+        .loading-bar { height: 45px; }
+        .modal-content { gap: 30px; font-size: 32px; }
+        .modal-button { padding: 12px 30px; font-size: 32px; }
+
+        /* --- Status Bar, Taskbar & Start Menu (Scaled Up) --- */
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: var(--window-bg-color);
+            color: var(--text-color);
+            padding: 12px 12px 16px 12px; /* Increased padding */
+            border-top: 4px solid var(--window-border-color);
+            font-size: 32px; /* Increased font size */
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+        }
+        .start-button {
+            padding: 6px 20px; /* Increased padding */
+            font-size: 34px;
+            background-color: var(--theme-green);
+            color: var(--text-color);
+            border: 2px solid var(--window-border-color);
+            cursor: pointer;
+            font-weight: bold;
+            flex-shrink: 0;
+            border-radius: 3px;
+            margin-left: 25px;
+        }
+        .start-button:active { border-style: inset; }
+        .start-menu {
+            position: absolute;
+            bottom: 68px; /* Adjusted for taller status bar */
+            width: 400px; /* Increased width */
+            border-radius: 10px;
+            z-index: 9999;
+            display: none; /* Hidden by default */
+            color: var(--start-menu-text);
+            background-color: var(--start-menu-bg);
+            border: 4px solid var(--window-border-color);
+        }
+        .start-menu.show {
+            display: block;
+        }
+        .start-menu-list {
+            list-style: none;
+            padding: 12px;
+            margin: 0;
+        }
+        .start-menu-item {
+            padding: 16px 20px;
+            font-size: 32px;
+            cursor: pointer;
+        }
+        .start-menu-item:hover {
+            background-color: var(--theme-blue);
+            color: var(--text-color);
+        }
+        .start-menu-separator {
+            height: 4px;
+            background-color: var(--window-border-color);
+            margin: 12px 0;
+        }
+
+        .taskbar {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 0 12px;
+            overflow: hidden;
+        }
+        .taskbar-item {
+            padding: 5px 16px;
+            max-width: 300px;
+            gap: 12px;
+            font-size: 28px;
+            background-color: var(--window-bg-color);
+            border: 2px solid var(--window-border-color);
+            color: var(--text-color);
+            white-space: nowrap;
+            cursor: pointer;
+            flex-shrink: 1;
+            display: flex;
+            align-items: center;
+            border-radius: 3px;
+        }
+        .taskbar-item.active {
+            background-color: var(--taskbar-item-active-bg);
+            border-style: inset;
+            font-weight: bold;
+        }
+        .taskbar-icon { width: 28px; height: 28px; }
+
+        /* --- Notification Area (Scaled Up) --- */
+        .notification-area {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 0 12px;
+            border-left: 4px solid #aaa;
+            margin-left: auto;
+            margin-right: 28px;
+            flex-shrink: 0;
+        }
+        .notification-area svg { width: 36px; height: 36px; }
+        #clock { font-size: 32px; }
+    </style>
+</head>
+<body>
+    <div id="vignette-overlay"></div>
+
+    <!-- Desktop Icons -->
+    <div class="desktop-icons">
+        <div class="desktop-icon" data-opens="window1">
+            <div class="icon-bg">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path fill="#B0AEB8" d="M20,18H4V4H20M20,2H4A2,2 0 0,0 2,4V18A2,2 0 0,0 4,20H11V22H9V24H15V22H13V20H20A2,2 0 0,0 22,18V4A2,2 0 0,0 20,2Z" />
+                    <path fill="#98d2ff" d="M4.5,4.5h15v9h-15V4.5Z" />
+                    <circle cx="8" cy="8" r="1.5" fill="black"/>
+                    <circle cx="16" cy="8" r="1.5" fill="black"/>
+                    <path d="M 10 11 Q 12 13 14 11" stroke="black" fill="transparent" stroke-width="1.5"/>
+                </svg>
+            </div>
+            <span>my_computer</span>
+        </div>
+        <div class="desktop-icon" data-opens="window2">
+            <div class="icon-bg" style="background-color: var(--theme-pink); border-color: var(--theme-pink);">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <rect x="4" y="4" width="16" height="16" fill="#98d2ff"/>
+                    <path fill="#000" d="M12,6v9.55c-0.59-0.34-1.27-0.55-2-0.55c-2.21,0-4,1.79-4,4s1.79,4,4,4s4-1.79,4-4V8h4V4h-8z"/>
+                </svg>
+            </div>
+            <span>my_music</span>
+        </div>
+        <div class="desktop-icon" data-opens="window4">
+            <div class="icon-bg">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path fill="#F9E79F" d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.1.89 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.11-.9-2-2h-8l-2-2z"/>
+                    <path fill="#a3ff98" d="M6 12h12v2H6zm0 4h8v2H6z"/>
+                </svg>
+            </div>
+            <span>my_documents</span>
+        </div>
+        <div class="desktop-icon" id="screenshot-icon">
+            <div class="icon-bg">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path fill="#B0AEB8" d="M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z" />
+                </svg>
+            </div>
+            <span>Screenshot</span>
+        </div>
+    </div>
+
+    <!-- Windows (initially hidden, with larger default sizes) -->
+    <div class="window hidden window-theme-blue" id="window1" style="width: 700px; height: 600px; top: 5%; left: 15%;">
+        <div class="title-bar"><span class="title-text">C:\</span><div class="title-bar-buttons"><div class="title-bar-button close-btn">X</div></div></div>
+        <div class="content checkerboard"></div>
+    </div>
+    <div class="window hidden window-theme-green" id="window2" style="width: 720px; height: 400px; top: 25%; left: 40%;">
+        <div class="title-bar"><span class="title-text">Loading...</span><div class="title-bar-buttons"><div class="title-bar-button close-btn">X</div></div></div>
+        <div class="content loading-bar-container">
+            <span>Loading "my_music.mp3"...</span>
+            <div class="loading-bar"><div class="loading-bar-inner"></div></div>
+        </div>
+    </div>
+    <div class="window hidden window-theme-pink" id="window3" style="width: 600px; height: 350px; top: 50%; left: 25%;">
+        <div class="title-bar"><span class="title-text">Attention!</span><div class="title-bar-buttons"><div class="title-bar-button close-btn">X</div></div></div>
+        <div class="content modal-content">
+            <p>You need to fall in love!</p>
+            <div class="modal-buttons">
+                <button class="modal-button" onclick="this.closest('.window').classList.add('hidden'); removeTaskbarItem('window3');">Okay</button>
+            </div>
+        </div>
+    </div>
+    <div class="window hidden" id="window4" style="width: 780px; height: 550px; top: 55%; left: 50%;">
+        <div class="title-bar"><span class="title-text">my_documents</span><div class="title-bar-buttons"><div class="title-bar-button close-btn">X</div></div></div>
+        <div class="content image-viewer">
+            <img src="https://placehold.co/400x300/f0f0f0/000000?text=GAME_OVER.PNG" alt="Placeholder image">
+        </div>
+    </div>
+
+    <!-- Footer Status Bar -->
+    <div class="status-bar">
+        <div class="start-button" id="startButton">Start</div>
+        <div class="taskbar" id="taskbar"></div>
+        <div class="notification-area">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path fill="#ff98e7" stroke="#000" stroke-width="1.5" d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z"/>
+            </svg>
+            <span id="clock"></span>
+        </div>
+    </div>
+
+    <!-- Start Menu -->
+    <div class="start-menu" id="startMenu">
+        <ul class="start-menu-list">
+            <li class="start-menu-item" data-opens="window3"><span>Messages</span></li>
+            <li class="start-menu-item" data-opens="window4"><span>Documents</span></li>
+            <li class="start-menu-separator"></li>
+            <li class="start-menu-item" id="shutdown"><span>Shut Down...</span></li>
+        </ul>
+    </div>
+
+    <script>
+        // --- GLOBAL SETTINGS ---
+        // To use a custom wallpaper, paste the image URL here.
+        // If left empty (""), the default grid wallpaper will be used.
+        const CUSTOM_WALLPAPER_URL = "";
+
+        let highestZIndex = 4;
+        const windows = document.querySelectorAll('.window');
+        const taskbar = document.getElementById('taskbar');
+
+        // --- Wallpaper Logic ---
+        function setWallpaper() {
+            if (CUSTOM_WALLPAPER_URL) {
+                document.body.style.backgroundImage = `url('${CUSTOM_WALLPAPER_URL}')`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundPosition = 'center';
+            }
+        }
+        setWallpaper(); // Set wallpaper on page load
+
+        // --- Taskbar Management ---
+        function updateTaskbarActiveState(activeWindowId) {
+            document.querySelectorAll('.taskbar-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.windowId === activeWindowId);
+            });
+        }
+
+        function createTaskbarItem(windowEl) {
+            const windowId = windowEl.id;
+            if (document.querySelector(`.taskbar-item[data-window-id="${windowId}"]`)) {
+                return;
+            }
+
+            const item = document.createElement('div');
+            item.className = 'taskbar-item';
+            item.dataset.windowId = windowId;
+
+            const titleBarIcon = windowEl.querySelector('.title-bar-icon');
+            if (titleBarIcon) {
+                const iconClone = titleBarIcon.cloneNode(true);
+                iconClone.classList.remove('title-bar-icon');
+                iconClone.classList.add('taskbar-icon');
+                item.appendChild(iconClone);
+            }
+
+            const title = windowEl.querySelector('.title-text').textContent;
+            const textSpan = document.createElement('span');
+            textSpan.textContent = title;
+            item.appendChild(textSpan);
+
+            item.addEventListener('click', () => openWindow(windowId));
+            taskbar.appendChild(item);
+        }
+
+        function removeTaskbarItem(windowId) {
+            const item = document.querySelector(`.taskbar-item[data-window-id="${windowId}"]`);
+            if (item) item.remove();
+        }
+
+        // --- Window Management ---
+        function bringToFront(windowEl) {
+            highestZIndex++;
+            windowEl.style.zIndex = highestZIndex;
+            updateTaskbarActiveState(windowEl.id);
+        }
+
+        function openWindow(windowId) {
+            const windowToOpen = document.getElementById(windowId);
+            if (windowToOpen) {
+                windowToOpen.classList.remove('hidden');
+                createTaskbarItem(windowToOpen);
+                bringToFront(windowToOpen);
+            }
+            document.getElementById('startMenu').classList.remove('show');
+        }
+
+        windows.forEach(windowEl => {
+            const titleBar = windowEl.querySelector('.title-bar');
+            const closeBtn = windowEl.querySelector('.close-btn');
+
+            windowEl.addEventListener('mousedown', () => bringToFront(windowEl), true);
+
+            if (titleBar) {
+                titleBar.addEventListener('mousedown', (e) => {
+                    if (e.target.closest('.title-bar-button')) return;
+                    e.preventDefault();
+                    const startX = e.clientX, startY = e.clientY;
+                    const initialLeft = windowEl.offsetLeft, initialTop = windowEl.offsetTop;
+                    const onMouseMove = (moveEvent) => {
+                        const dx = moveEvent.clientX - startX, dy = moveEvent.clientY - startY;
+                        windowEl.style.left = `${initialLeft + dx}px`;
+                        windowEl.style.top = `${initialTop + dy}px`;
+                    };
+                    const onMouseUp = () => document.removeEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp, { once: true });
+                });
+            }
+
+            if (closeBtn) {
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    windowEl.classList.add('hidden');
+                    removeTaskbarItem(windowEl.id);
+                });
+            }
+        });
+
+        // --- Initialization ---
+        function initializeUI() {
+            // Add icons to title bars from desktop icons
+            document.querySelectorAll('.desktop-icon[data-opens]').forEach(desktopIcon => {
+                const windowId = desktopIcon.dataset.opens;
+                const windowEl = document.getElementById(windowId);
+                const svgIcon = desktopIcon.querySelector('svg');
+                if (windowEl && svgIcon) {
+                    const titleBar = windowEl.querySelector('.title-bar');
+                    const iconClone = svgIcon.cloneNode(true);
+                    iconClone.classList.add('title-bar-icon');
+                    titleBar.prepend(iconClone);
+                }
+            });
+
+            // --- Desktop Icon Click/Select/DblClick Logic ---
+            const desktopIcons = document.querySelectorAll('.desktop-icon');
+            let lastClickTime = 0;
+
+            const deselectAllIcons = () => {
+                desktopIcons.forEach(icon => icon.classList.remove('selected'));
+            };
+
+            desktopIcons.forEach(icon => {
+                icon.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent body click from firing
+                    const now = new Date().getTime();
+
+                    if (icon.classList.contains('selected') && (now - lastClickTime < 400)) {
+                        // Double click
+                        if (icon.dataset.opens) {
+                            openWindow(icon.dataset.opens);
+                        } else if (icon.id === 'screenshot-icon') {
+                            captureAndDownloadScreenshot();
+                        }
+                    } else {
+                        // Single click
+                        deselectAllIcons();
+                        icon.classList.add('selected');
+                    }
+                    lastClickTime = now;
+                });
+            });
+
+            // Set up click listeners for Start Menu items (single-click)
+            document.querySelectorAll('.start-menu-item[data-opens]').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openWindow(el.dataset.opens);
+                });
+            });
+
+            // Deselect icons when clicking on the desktop background
+            document.body.addEventListener('click', (e) => {
+                if (!e.target.closest('.desktop-icon')) {
+                    deselectAllIcons();
+                }
+            });
+        }
+
+        // --- Start Menu Logic ---
+        const startButton = document.getElementById('startButton');
+        const startMenu = document.getElementById('startMenu');
+        startButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            startMenu.classList.toggle('show');
+        });
+        document.body.addEventListener('click', (e) => {
+            // Close start menu if clicking outside of it
+            if (!e.target.closest('.start-menu') && !e.target.closest('.start-button')) {
+                startMenu.classList.remove('show');
+            }
+        });
+        document.getElementById('shutdown').addEventListener('click', () => {
+            console.log("Shutdown initiated...");
+            startMenu.classList.remove('show');
+        });
+
+        // --- Clock Logic ---
+        const clockElement = document.getElementById('clock');
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            clockElement.textContent = `${hours}:${minutes}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // --- Run Initialization ---
+        initializeUI();
+
+
+        function captureAndDownloadScreenshot() {
+            html2canvas(document.body, {
+                width: 2054,
+                height: 1580,
+                scale: window.devicePixelRatio,
+                useCORS: true,
+                backgroundColor: null,
+                scrollX: 0,
+                scrollY: 0,
+                logging: false,
+                allowTaint: true
+            }).then(canvas => {
+                // Continue with the download and messaging
+                const dataUrl = canvas.toDataURL('image/png');
+                /*
+                const link = document.createElement('a');
+                link.href = dataUrl;
+                link.download = 'screenshot.png';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                */
+                window.parent.postMessage({
+                    type: 'screenshotData',
+                    dataUrl: dataUrl
+                }, '*');
+
+            }).catch(e => {
+                console.error("Iframe error during screenshot or download:", e);
+            });
+        }
+
+
+        // Listen for messages from the parent window (the 3D viewer)
+        window.addEventListener('message', (event) => {
+            // We only care about the 'captureScreenshot' command
+            if (event.data === 'captureScreenshot') {
+                captureAndDownloadScreenshot(); // Reuse the function for message command
+            }
+        });
+
+    </script>
+</body>
+</html>
